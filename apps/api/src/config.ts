@@ -47,5 +47,13 @@ export const config = {
   },
 } as const;
 
-export const hasAnthropicKey = () => config.anthropic.apiKey.length > 0;
-export const hasGithubToken = () => config.github.token.length > 0;
+/**
+ * A copied .env.example leaves literal placeholders behind. Treat those as
+ * missing: failing fast with "no key" is far better than a doomed API call
+ * that hangs on retries, which is how this is usually discovered.
+ */
+const isPlaceholder = (v: string) =>
+  v.length === 0 || /^(sk-ant-\.{3}|github_pat_\.{3}|\.{3}|changeme|your[-_]?\w*)$/i.test(v.trim()) || v.trim().endsWith('...');
+
+export const hasAnthropicKey = () => !isPlaceholder(config.anthropic.apiKey);
+export const hasGithubToken = () => !isPlaceholder(config.github.token);
