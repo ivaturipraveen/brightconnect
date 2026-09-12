@@ -1,0 +1,33 @@
+[Unit]
+Description=Brightworks API
+Documentation=https://github.com/ivaturipraveen/brightconnect
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=brightworks
+Group=brightworks
+WorkingDirectory=/opt/brightworks
+EnvironmentFile=/opt/brightworks/.env
+ExecStart=/usr/bin/npx tsx apps/api/src/index.ts
+
+# Keep the demo up: restart on any exit, but back off so a crash loop does not
+# spin the CPU during a meeting.
+Restart=always
+RestartSec=3
+StartLimitIntervalSec=0
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=brightworks-api
+
+# The agent fleet writes into workspaces/ and data/ and nowhere else.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/brightworks/data /opt/brightworks/workspaces
+
+[Install]
+WantedBy=multi-user.target

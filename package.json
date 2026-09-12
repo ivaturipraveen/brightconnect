@@ -1,0 +1,19 @@
+{
+  "name": "brightconnect",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Brightworks - an AI engineering workforce. Agent fleet orchestration for AI-native SDLC and incident management.",
+  "workspaces": ["apps/*"],
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev -w @brightconnect/api",
+    "dev:web": "npm run dev -w @brightconnect/web",
+    "build": "npm run build -w @brightconnect/web",
+    "start": "npm run start -w @brightconnect/api",
+    "typecheck": "npm run typecheck -w @brightconnect/api && npm run typecheck -w @brightconnect/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

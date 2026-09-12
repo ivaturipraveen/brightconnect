@@ -1,0 +1,276 @@
+/**
+ * GitHub integration - the ticketing system, the PR surface, and half the
+ * governance trail.
+ *
+ * Built as a per-mission factory because these tools need mission context: the
+ * workspace whose files become a commit, and the mission to attach artifacts to.
+ *
+ * Without a token the tools still work, recording locally and clearly labelling
+ * the result as unpublished. That keeps the whole product demonstrable before
+ * credentials land, and means a token outage during a demo degrades instead of
+ * dead-ending.
+ */
+import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
+import { Octokit } from '@octokit/rest';
+import { z } from 'zod';
+import { readdir, readFile, stat } from 'node:fs/promises';
+import { join, relative } from 'node:path';
+import { nanoid } from 'nanoid';
+import { config, hasGithubToken } from '../config.ts';
+import { artifacts } from '../db.ts';
+import { bus } from '../bus.ts';
+
+const text = (s: string) => ({ content: [{ type: 'text' as const, text: s }] });
+
+export interface GithubToolContext {
+  missionId: string;
+  /** Directory the fleet writes into; its contents become the PR. */
+  workspaceDir: string;
+  /** Who to attribute tool calls to in the audit trail. */
+  actor: string;
+}
+
+const octokit = () =>
+  hasGithubToken() ? new Octokit({ auth: config.github.token }) : null;
+
+const repoRef = { owner: config.github.owner, repo: config.github.repo };
+
+/** Collect every file the agents wrote, as repo-relative paths. */
+async function collectWorkspaceFiles(
+  dir: string,
+): Promise<Array<{ path: string; content: string }>> {
+  const out: Array<{ path: string; content: string }> = [];
+  async function walk(current: string) {
+    let entries;
+    try {
+      entries = await readdir(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.name === '.git' || e.name === 'node_modules') continue;
+      const full = join(current, e.name);
+      if (e.isDirectory()) {
+        await walk(full);
+      } else {
+        const info = await stat(full);
+        // Skip anything large enough to be a build artifact rather than source.
+        if (info.size > 512 * 1024) continue;
+        out.push({ path: relative(dir, full), content: await readFile(full, 'utf8') });
+      }
+    }
+  }
+  await walk(dir);
+  return out;
+}
+
+export function createGithubServer(ctx: GithubToolContext) {
+  const record = (
+    kind: 'pull_request' | 'issue',
+    title: string,
+    url: string | null,
+    body: string,
+  ) => {
+    const artifact = artifacts.create({
+      id: nanoid(10),
+      missionId: ctx.missionId,
+      kind,
+      title,
+      url,
+      body,
+    });
+    bus.emitEvent({
+      missionId: ctx.missionId,
+      type: 'artifact.created',
+      actor: ctx.actor,
+      text: `${kind === 'issue' ? 'Ticket' : 'Pull request'}: ${title}`,
+      data: artifact,
+    });
+    return artifact;
+  };
+
+  const getRepoContext = tool(
+    'get_repo_context',
+    'Get information about the target repository: default branch, recent commits, and open issues. Call this before creating issues or pull requests.',
+    {},
+    async () => {
+      const gh = octokit();
+      if (!gh) {
+        return text(
+          `Repository: ${repoRef.owner}/${repoRef.repo} (no GitHub credentials configured - operating in local mode)\n` +
+            `Default branch: main\nIssues and pull requests will be recorded locally and marked unpublished.`,
+        );
+      }
+      const [repo, commits, issues] = await Promise.all([
+        gh.repos.get(repoRef),
+        gh.repos.listCommits({ ...repoRef, per_page: 5 }),
+        gh.issues.listForRepo({ ...repoRef, state: 'open', per_page: 10 }),
+      ]);
+      return text(
+        `Repository: ${repo.data.full_name}\n` +
+          `Default branch: ${repo.data.default_branch}\n` +
+          `Open issues: ${repo.data.open_issues_count}\n\n` +
+          `Recent commits:\n` +
+          commits.data
+            .map((c) => `  ${c.sha.slice(0, 7)} ${c.commit.message.split('\n')[0]} (${c.commit.author?.name})`)
+            .join('\n') +
+          `\n\nOpen issues:\n` +
+          (issues.data.length
+            ? issues.data.map((i) => `  #${i.number} ${i.title} [${i.labels.map((l: any) => (typeof l === 'string' ? l : l.name)).join(', ')}]`).join('\n')
+            : '  (none)'),
+      );
+    },
+  );
+
+  const listIssues = tool(
+    'list_issues',
+    'List issues in the repository, optionally filtered by state or label.',
+    {
+      state: z.enum(['open', 'closed', 'all']).optional().describe('Defaults to open.'),
+      label: z.string().optional().describe('Filter to a single label.'),
+    },
+    async ({ state, label }) => {
+      const gh = octokit();
+      if (!gh) {
+        const local = artifacts.listAll(50).filter((a) => a.kind === 'issue');
+        return text(
+          local.length
+            ? `Locally recorded tickets (unpublished):\n` +
+                local.map((a) => `  ${a.title} - ${a.url ?? 'local'}`).join('\n')
+            : 'No issues recorded yet (local mode).',
+        );
+      }
+      const res = await gh.issues.listForRepo({
+        ...repoRef,
+        state: state ?? 'open',
+        ...(label ? { labels: label } : {}),
+        per_page: 30,
+      });
+      return text(
+        res.data.length
+          ? res.data
+              .map((i) => `#${i.number} [${i.state}] ${i.title}\n  ${(i.body ?? '').slice(0, 160)}`)
+              .join('\n\n')
+          : 'No issues matched.',
+      );
+    },
+  );
+
+  const createIssue = tool(
+    'create_issue',
+    'File a ticket in the repository. Use this to raise incidents, defects, and follow-up work that a human needs to act on.',
+    {
+      title: z.string().describe('Concise, specific issue title.'),
+      body: z.string().describe('Markdown body: what is wrong, impact, evidence, proposed fix.'),
+      labels: z.array(z.string()).optional().describe('Labels, e.g. ["incident","severity:critical"].'),
+    },
+    async ({ title, body, labels }) => {
+      const gh = octokit();
+      const signed = `${body}\n\n---\n_Filed by ${config.productName} - agent \`${ctx.actor}\` - mission \`${ctx.missionId}\`_`;
+
+      if (!gh) {
+        const a = record('issue', title, null, signed);
+        return text(
+          `Ticket recorded locally (unpublished - no GitHub credentials).\n` +
+            `  id=${a.id} title=${title}\n  labels=${(labels ?? []).join(', ') || 'none'}\n\n` +
+            `It will appear in the mission's artifacts. Configure GITHUB_TOKEN to publish to ${repoRef.owner}/${repoRef.repo}.`,
+        );
+      }
+
+      const res = await gh.issues.create({ ...repoRef, title, body: signed, labels });
+      record('issue', title, res.data.html_url, signed);
+      return text(`Created issue #${res.data.number}: ${res.data.html_url}`);
+    },
+  );
+
+  const commentIssue = tool(
+    'comment_issue',
+    'Add a comment to an existing issue - for example attaching an RCA to the incident ticket it belongs to.',
+    {
+      issueNumber: z.number().int().describe('The issue number to comment on.'),
+      body: z.string().describe('Markdown comment body.'),
+    },
+    async ({ issueNumber, body }) => {
+      const gh = octokit();
+      if (!gh) return text(`Comment recorded locally for #${issueNumber} (unpublished).`);
+      const res = await gh.issues.createComment({ ...repoRef, issue_number: issueNumber, body });
+      return text(`Commented on #${issueNumber}: ${res.data.html_url}`);
+    },
+  );
+
+  const openPullRequest = tool(
+    'open_pull_request',
+    'Open a pull request containing everything the fleet wrote into the mission workspace. This is the human go/no-go gate - it requires approval before it runs.',
+    {
+      title: z.string().describe('PR title.'),
+      body: z.string().describe(
+        'PR description: what changed and why, risk, how it was tested, what to watch after deploy, how to roll back.',
+      ),
+      branch: z.string().describe('Branch name to create, e.g. feature/order-status-webhook.'),
+    },
+    async ({ title, body, branch }) => {
+      const files = await collectWorkspaceFiles(ctx.workspaceDir);
+      if (files.length === 0) {
+        return text(
+          'The mission workspace is empty - there is nothing to put in a pull request. ' +
+            'Make sure the implementation agents wrote their files into the workspace directory before opening a PR.',
+        );
+      }
+
+      const signed = `${body}\n\n---\n_Opened by ${config.productName} - mission \`${ctx.missionId}\`. ${files.length} file(s) changed._`;
+      const gh = octokit();
+
+      if (!gh) {
+        const a = record('pull_request', title, null, signed);
+        return text(
+          `Pull request prepared locally (unpublished - no GitHub credentials).\n` +
+            `  branch=${branch}\n  files=${files.length}\n` +
+            files.map((f) => `    ${f.path}`).join('\n') +
+            `\n\nRecorded as artifact ${a.id}. Configure GITHUB_TOKEN to publish to ${repoRef.owner}/${repoRef.repo}.`,
+        );
+      }
+
+      // Build a real commit via the git data API so no local clone is needed.
+      const repo = await gh.repos.get(repoRef);
+      const base = repo.data.default_branch;
+      const baseRef = await gh.git.getRef({ ...repoRef, ref: `heads/${base}` });
+      const baseSha = baseRef.data.object.sha;
+
+      const blobs = await Promise.all(
+        files.map(async (f) => {
+          const blob = await gh.git.createBlob({
+            ...repoRef,
+            content: Buffer.from(f.content, 'utf8').toString('base64'),
+            encoding: 'base64',
+          });
+          return { path: f.path, mode: '100644' as const, type: 'blob' as const, sha: blob.data.sha };
+        }),
+      );
+
+      const tree = await gh.git.createTree({ ...repoRef, base_tree: baseSha, tree: blobs });
+      const commit = await gh.git.createCommit({
+        ...repoRef,
+        message: `${title}\n\nGenerated by ${config.productName} (mission ${ctx.missionId})`,
+        tree: tree.data.sha,
+        parents: [baseSha],
+      });
+      await gh.git.createRef({ ...repoRef, ref: `refs/heads/${branch}`, sha: commit.data.sha });
+
+      const pr = await gh.pulls.create({ ...repoRef, title, body: signed, head: branch, base });
+      record('pull_request', title, pr.data.html_url, signed);
+
+      return text(
+        `Opened pull request #${pr.data.number}: ${pr.data.html_url}\n` +
+          `  branch=${branch} -> ${base}\n  files=${files.length}\n` +
+          files.map((f) => `    ${f.path}`).join('\n'),
+      );
+    },
+  );
+
+  return createSdkMcpServer({
+    name: 'github',
+    version: '1.0.0',
+    instructions: `GitHub integration for ${repoRef.owner}/${repoRef.repo}: issues as the ticketing system, and pull requests as the human review gate.`,
+    tools: [getRepoContext, listIssues, createIssue, commentIssue, openPullRequest],
+  });
+}
