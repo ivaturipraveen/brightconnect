@@ -7,7 +7,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { config, hasApiKey } from './config.ts';
-import { reply, streamReply, type ChatMessage } from './chat.ts';
+import { reply, streamReplyWithMetadata, type ChatMessage } from './chat.ts';
 
 const app = Fastify({ logger: { level: 'info' } });
 await app.register(cors, { origin: true });
@@ -55,8 +55,20 @@ app.post('/api/chat/stream', async (req, reply_) => {
   });
 
   try {
-    for await (const chunk of streamReply(messages)) {
+    const { chunks, metadata } = await streamReplyWithMetadata(messages);
+    // Wrap metadata promise to handle rejections immediately and avoid unhandled rejection
+    // if chunk processing fails before we await it.
+    const safeMetadata = metadata.catch((err) => {
+      app.log.error({ err }, 'metadata tracking failed');
+      return null;
+    });
+
+    for await (const chunk of chunks) {
       reply_.raw.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
+    }
+    const meta = await safeMetadata;
+    if (meta) {
+      reply_.raw.write(`data: ${JSON.stringify({ metadata: meta })}\n\n`);
     }
     reply_.raw.write(`data: ${JSON.stringify({ done: true })}\n\n`);
   } catch (err) {

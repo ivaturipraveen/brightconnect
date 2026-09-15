@@ -1,7 +1,7 @@
 /** Tests for conversation handling that do not need the API. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { trimHistory, type ChatMessage } from './chat.ts';
+import { trimHistory, type ChatMessage, type StreamMetadata } from './chat.ts';
 
 const msg = (i: number): ChatMessage => ({ role: 'user', content: `message ${i}` });
 
@@ -20,4 +20,19 @@ test('trimHistory keeps the most recent turns, not the oldest', () => {
 
 test('trimHistory handles an empty conversation', () => {
   assert.deepEqual(trimHistory([]), []);
+});
+
+test('StreamMetadata has all required fields', () => {
+  const metadata: StreamMetadata = {
+    inputTokens: 42,
+    outputTokens: 100,
+    elapsedTimeMs: 1500,
+  };
+
+  assert.equal(metadata.inputTokens, 42);
+  assert.equal(metadata.outputTokens, 100);
+  assert.equal(metadata.elapsedTimeMs, 1500);
+  assert.ok(metadata.inputTokens >= 0, 'input tokens must be non-negative');
+  assert.ok(metadata.outputTokens >= 0, 'output tokens must be non-negative');
+  assert.ok(metadata.elapsedTimeMs > 0, 'elapsed time must be positive');
 });

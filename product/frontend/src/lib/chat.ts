@@ -8,9 +8,22 @@
  */
 const API = `${import.meta.env.BASE_URL}api`;
 
+/**
+ * Metadata about the chat response.
+ *
+ * All fields are always present when the request succeeds. These are required, not optional,
+ * because the backend always sends all three when returning a successful response.
+ */
+export interface Metadata {
+  inputTokens: number;
+  outputTokens: number;
+  elapsedTimeMs: number;
+}
+
 export interface Message {
   role: 'user' | 'assistant';
   content: string;
+  metadata?: Metadata;
 }
 
 /**
@@ -18,12 +31,14 @@ export interface Message {
  *
  * `onChunk` is called for each fragment as it arrives, so the caller can render
  * the answer as it is written rather than after it finishes.
+ *
+ * Returns metadata about the response (token counts, elapsed time).
  */
 export async function streamChat(
   messages: Message[],
   onChunk: (text: string) => void,
   signal?: AbortSignal,
-): Promise<void> {
+): Promise<Metadata | undefined> {
   const res = await fetch(`${API}/chat/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -46,6 +61,7 @@ export async function streamChat(
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let metadata: Metadata | undefined;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -60,12 +76,15 @@ export async function streamChat(
       const line = frame.split('\n').find((l) => l.startsWith('data: '));
       if (!line) continue;
       const payload = JSON.parse(line.slice(6)) as
-        { text?: string; done?: boolean; error?: string };
+        { text?: string; done?: boolean; error?: string; metadata?: Metadata };
       if (payload.error) throw new Error(payload.error);
       if (payload.text) onChunk(payload.text);
-      if (payload.done) return;
+      if (payload.metadata) metadata = payload.metadata;
+      if (payload.done) return metadata;
     }
   }
+
+  return metadata;
 }
 
 export async function checkHealth(): Promise<{ ready: boolean; model: string }> {
