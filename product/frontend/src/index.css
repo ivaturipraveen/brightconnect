@@ -18,6 +18,20 @@
   --font-sans: ui-sans-serif, -apple-system, "Segoe UI", Inter, system-ui, sans-serif;
 }
 
+@media (prefers-color-scheme: dark) {
+  @theme {
+    --color-page: #0f1419;
+    --color-raised: #1a1f2e;
+    --color-line: #2d3142;
+    --color-line-strong: #3d4554;
+    --color-text: #e8ecf1;
+    --color-text-soft: #a8b2c1;
+    --color-text-faint: #7a8696;
+    --color-accent: #3b82f6;
+    --color-accent-soft: #1e3a8a;
+  }
+}
+
 html, body, #root { height: 100%; }
 
 body {
