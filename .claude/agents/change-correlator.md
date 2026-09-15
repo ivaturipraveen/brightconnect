@@ -5,9 +5,6 @@ department: sre
 role: Correlates the incident with recent deploys and changes
 description: "Cross-references an incident window against deployments, config changes, and change-management records to find what changed."
 tools:
-  - Read
-  - Grep
-  - Glob
   - mcp__telemetry__query_alerts
   - mcp__telemetry__query_logs
   - mcp__telemetry__query_metrics

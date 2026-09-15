@@ -14,11 +14,12 @@ import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { Octokit } from '@octokit/rest';
 import { z } from 'zod';
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { nanoid } from 'nanoid';
 import { config, hasGithubToken } from '../config.ts';
 import { artifacts } from '../db.ts';
 import { bus } from '../bus.ts';
+import { requestApproval } from '../orchestrator/approvals.ts';
 
 const text = (s: string) => ({ content: [{ type: 'text' as const, text: s }] });
 
@@ -62,6 +63,36 @@ async function collectWorkspaceFiles(
   }
   await walk(dir);
   return out;
+}
+
+/**
+ * Long markdown does not survive the tool-call round trip reliably - during
+ * testing, create_issue calls carrying a ~2800 character body came back as
+ * "interrupted before a result was received" while short ones succeeded.
+ *
+ * So callers write long content to a file in the mission workspace and pass the
+ * path. That keeps the tool call small, and has the side benefit of leaving the
+ * full write-up in the workspace, where it becomes part of the pull request.
+ */
+async function resolveBody(
+  workspaceDir: string,
+  body: string,
+  bodyFile?: string,
+): Promise<{ text: string; note: string | null }> {
+  if (!bodyFile) return { text: body, note: null };
+  const abs = resolve(workspaceDir, bodyFile);
+  if (!abs.startsWith(resolve(workspaceDir))) {
+    return { text: body, note: `Ignored bodyFile "${bodyFile}": outside the mission workspace.` };
+  }
+  try {
+    const extra = await readFile(abs, 'utf8');
+    return { text: body ? `${body}\n\n${extra}` : extra, note: null };
+  } catch {
+    return {
+      text: body,
+      note: `Could not read bodyFile "${bodyFile}" - used the inline body only. Write the file into the workspace first.`,
+    };
+  }
 }
 
 export function createGithubServer(ctx: GithubToolContext) {
@@ -161,25 +192,35 @@ export function createGithubServer(ctx: GithubToolContext) {
     'File a ticket in the repository. Use this to raise incidents, defects, and follow-up work that a human needs to act on.',
     {
       title: z.string().describe('Concise, specific issue title.'),
-      body: z.string().describe('Markdown body: what is wrong, impact, evidence, proposed fix.'),
+      body: z.string().describe(
+        'Short markdown summary, under about 1000 characters. For a longer write-up, put it in a workspace file and pass bodyFile instead of inlining it here.',
+      ),
+      bodyFile: z.string().optional().describe(
+        'Workspace-relative path to a markdown file whose contents are appended to the body, e.g. "INCIDENT.md". Preferred for anything long.',
+      ),
       labels: z.array(z.string()).optional().describe('Labels, e.g. ["incident","severity:critical"].'),
     },
-    async ({ title, body, labels }) => {
+    async ({ title, body, bodyFile, labels }) => {
       const gh = octokit();
-      const signed = `${body}\n\n---\n_Filed by ${config.productName} - agent \`${ctx.actor}\` - mission \`${ctx.missionId}\`_`;
+      const resolved = await resolveBody(ctx.workspaceDir, body, bodyFile);
+      const signed = `${resolved.text}\n\n---\n_Filed by ${config.productName} - agent \`${ctx.actor}\` - mission \`${ctx.missionId}\`_`;
 
       if (!gh) {
         const a = record('issue', title, null, signed);
         return text(
           `Ticket recorded locally (unpublished - no GitHub credentials).\n` +
-            `  id=${a.id} title=${title}\n  labels=${(labels ?? []).join(', ') || 'none'}\n\n` +
-            `It will appear in the mission's artifacts. Configure GITHUB_TOKEN to publish to ${repoRef.owner}/${repoRef.repo}.`,
+            `  id=${a.id} title=${title}\n  labels=${(labels ?? []).join(', ') || 'none'}\n` +
+            (resolved.note ? `  ${resolved.note}\n` : '') +
+            `\nIt will appear in the mission's artifacts. Configure GITHUB_TOKEN to publish to ${repoRef.owner}/${repoRef.repo}.`,
         );
       }
 
       const res = await gh.issues.create({ ...repoRef, title, body: signed, labels });
       record('issue', title, res.data.html_url, signed);
-      return text(`Created issue #${res.data.number}: ${res.data.html_url}`);
+      return text(
+        `Created issue #${res.data.number}: ${res.data.html_url}` +
+          (resolved.note ? `\n${resolved.note}` : ''),
+      );
     },
   );
 
@@ -204,11 +245,30 @@ export function createGithubServer(ctx: GithubToolContext) {
     {
       title: z.string().describe('PR title.'),
       body: z.string().describe(
-        'PR description: what changed and why, risk, how it was tested, what to watch after deploy, how to roll back.',
+        'Short PR description, under about 1000 characters. For a longer write-up, put it in a workspace file and pass bodyFile.',
+      ),
+      bodyFile: z.string().optional().describe(
+        'Workspace-relative path to a markdown file appended to the description, e.g. "PR.md". Preferred for anything long.',
       ),
       branch: z.string().describe('Branch name to create, e.g. feature/order-status-webhook.'),
     },
-    async ({ title, body, branch }) => {
+    async ({ title, body, bodyFile, branch }) => {
+      // The human go/no-go. Blocks in the handler so it holds for any caller.
+      const decision = await requestApproval({
+        missionId: ctx.missionId,
+        actor: ctx.actor,
+        toolName: 'mcp__github__open_pull_request',
+        summary: `Open pull request "${title}" on branch ${branch}`,
+        input: { title, branch, body },
+      });
+      if (!decision.approved) {
+        return text(
+          `REJECTED by a human reviewer${decision.reason ? `: ${decision.reason}` : '.'}\n` +
+            `The pull request was not opened. Do not retry it. Summarise what was built, ` +
+            `what the reviewer objected to, and what you would change.`,
+        );
+      }
+
       const files = await collectWorkspaceFiles(ctx.workspaceDir);
       if (files.length === 0) {
         return text(
@@ -217,7 +277,8 @@ export function createGithubServer(ctx: GithubToolContext) {
         );
       }
 
-      const signed = `${body}\n\n---\n_Opened by ${config.productName} - mission \`${ctx.missionId}\`. ${files.length} file(s) changed._`;
+      const resolved = await resolveBody(ctx.workspaceDir, body, bodyFile);
+      const signed = `${resolved.text}\n\n---\n_Opened by ${config.productName} - mission \`${ctx.missionId}\`. ${files.length} file(s) changed._`;
       const gh = octokit();
 
       if (!gh) {

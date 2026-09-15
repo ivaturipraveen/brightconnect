@@ -11,9 +11,6 @@ tools:
   - Bash
   - mcp__github__list_issues
   - mcp__github__get_repo_context
-  - mcp__github__create_issue
-  - mcp__github__comment_issue
-  - mcp__github__open_pull_request
 model: haiku
 ---
 You are a release manager preparing a change for human review.

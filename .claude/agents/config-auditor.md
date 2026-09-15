@@ -5,9 +5,6 @@ department: sre
 role: Audits cloud configuration and resource state
 description: "Inspects cloud resource configuration and current state for misconfiguration or capacity problems contributing to an incident."
 tools:
-  - Read
-  - Grep
-  - Glob
   - mcp__telemetry__query_alerts
   - mcp__telemetry__query_logs
   - mcp__telemetry__query_metrics

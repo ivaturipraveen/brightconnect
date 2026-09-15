@@ -9,6 +9,12 @@
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { incidentState } from '../sim/state.ts';
+import { requestApproval } from '../orchestrator/approvals.ts';
+
+export interface RunbookContext {
+  missionId: string;
+  actor: string;
+}
 
 const text = (s: string) => ({ content: [{ type: 'text' as const, text: s }] });
 
@@ -80,6 +86,7 @@ export const RUNBOOK_ACTIONS: ActionSpec[] = [
 
 export const actionById = (id: string) => RUNBOOK_ACTIONS.find((a) => a.id === id);
 
+export function createRunbookServer(ctx: RunbookContext) {
 const listActions = tool(
   'list_actions',
   'List the remediation actions available, with their blast radius and whether they need human approval. Call this before proposing a fix.',
@@ -109,6 +116,25 @@ const executeAction = tool(
       return text(
         `Unknown action "${actionId}". Available: ${RUNBOOK_ACTIONS.map((a) => a.id).join(', ')}`,
       );
+    }
+
+    // High-impact actions stop here until a human decides. The gate lives in
+    // the handler so it holds regardless of which agent made the call.
+    if (spec.requiresApproval) {
+      const decision = await requestApproval({
+        missionId: ctx.missionId,
+        actor: ctx.actor,
+        toolName: 'mcp__runbook__execute_action',
+        summary: `${spec.title} on ${target} (impact: ${spec.impact})`,
+        input: { actionId, target, reason, params },
+      });
+      if (!decision.approved) {
+        return text(
+          `REJECTED by a human reviewer${decision.reason ? `: ${decision.reason}` : '.'}\n` +
+            `The action was not executed. Do not retry it. Explain the consequence of not ` +
+            `taking this action and what you recommend instead.`,
+        );
+      }
     }
 
     const appliedAt = new Date().toISOString();
@@ -155,10 +181,11 @@ const executeAction = tool(
   },
 );
 
-export const runbookServer = createSdkMcpServer({
+return createSdkMcpServer({
   name: 'runbook',
   version: '1.0.0',
   instructions:
-    'Remediation actions for the Exol OMS platform. High-impact actions require human approval.',
+    'Remediation actions for the Exol OMS platform. High-impact actions pause for human approval before they run.',
   tools: [listActions, executeAction],
 });
+}

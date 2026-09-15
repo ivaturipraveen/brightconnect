@@ -124,12 +124,17 @@ at real Cloud Monitoring and Cloud Logging changes those four handlers and nothi
 ## Layout
 
 ```
+.claude/agents/          the 17 specialists - EDIT PROMPTS HERE
+  log-analyst.md         frontmatter (tools, model) + prompt body
+  rca-analyst.md
+  ...
+
 server/                  the API and the agent fleet
   index.ts               REST + SSE
   config.ts              all configuration, one place
   db.ts                  SQLite schema and queries
   bus.ts                 event fan-out to connected dashboards
-  agents/fleet.ts        the 17 specialists
+  agents/fleet.ts        loads and validates the agent files
   orchestrator/
     run.ts               mission runner, stream translation, approval gate
     prompts.ts           orchestrator and mission briefs
@@ -140,7 +145,10 @@ web/                     the console
   index.html
   src/
     pages/               Mission Control · Mission Detail · Fleet · Incidents · Governance
-    components/ui.tsx    shared primitives
+    components/
+      MissionFlow.tsx    live delegation flow
+      AgentEditor.tsx    prompt editor
+      ui.tsx             shared primitives
     lib/                 typed API client, SSE hook
 
 scripts/preflight.ts     pre-demo check: key, subagents, tools, GitHub
@@ -153,6 +161,53 @@ dist/                    built console (gitignored)
 
 One package, one `package.json`, one `npm install`. The server and the console
 share a dependency tree; `vite.config.ts` points at `web/` as its root.
+
+---
+
+## Editing the agents
+
+Each specialist is a [Claude Code agent file](https://code.claude.com/docs/en/agent-sdk/subagents)
+in `.claude/agents/`:
+
+```markdown
+---
+name: log-analyst
+displayName: Log Analyst
+department: sre
+role: Cross-references logs against the alert window
+description: "Searches and correlates logs around an incident window..."
+tools:
+  - mcp__telemetry__query_logs
+  - mcp__telemetry__query_metrics
+model: haiku
+---
+You are an SRE analysing logs during a live incident.
+...
+```
+
+Two ways to edit: the file directly, or **the Fleet page in the console** — click
+any agent to open its definition, edit, and save. Saves are validated first; a
+file that would not load is rejected and the original is left untouched.
+
+Changes apply to the **next** mission. A running mission keeps the definitions it
+started with, so editing mid-demo cannot destabilise a run in progress.
+
+Because these are standard Claude Code agent files, they also work from the
+Claude Code CLI directly — the fleet is not locked inside this platform.
+
+### Choosing a model
+
+`model:` in frontmatter takes `haiku`, `sonnet`, `opus`, or a full model id.
+Omit it and the agent falls back to `AGENT_MODEL`.
+
+| Model | $/MTok in/out | Use for |
+|---|---|---|
+| `claude-haiku-4-5` | $1 / $5 | Cheapest. Retrieval and summarisation agents. |
+| `claude-sonnet-5` | $2 / $10 | Middle ground. |
+| `claude-opus-5` | $5 / $25 | Hardest reasoning — RCA synthesis, architecture. |
+
+Mixing is the point: an agent that greps logs does not need the model that
+synthesises a root cause from three conflicting reports.
 
 ---
 

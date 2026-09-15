@@ -8,7 +8,7 @@
  * tool - we observe those delegations here rather than scripting them.
  */
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { Options, PermissionResult, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { nanoid } from 'nanoid';
@@ -18,10 +18,13 @@ import { agentRuns, alerts, approvals, artifacts, missions } from '../db.ts';
 import { bus } from '../bus.ts';
 import { createGithubServer } from '../tools/github.ts';
 import { changeMgmtServer, telemetryServer } from '../tools/telemetry.ts';
-import { runbookServer, actionById } from '../tools/runbook.ts';
+import { createRunbookServer } from '../tools/runbook.ts';
 import {
   incidentMissionPrompt, orchestratorSystemPrompt, sdlcMissionPrompt,
 } from './prompts.ts';
+import {
+  registerMissionAbort, releaseMissionAbort, resolveApproval,
+} from './approvals.ts';
 import type { Mission } from '../types.ts';
 
 /** Tools that always require a human decision before they run. */
@@ -41,54 +44,6 @@ const DISALLOWED_TOOLS = [
   'EnterPlanMode', 'ExitPlanMode', 'CronCreate', 'CronList', 'CronDelete',
 ];
 
-/** Tool inputs that name a filesystem path, by tool. */
-const PATH_FIELDS = ['file_path', 'path', 'notebook_path', 'cwd'];
-
-/**
- * Confine filesystem tools to the mission workspace.
- *
- * Without this an agent can read the platform's own source. During testing the
- * remediation engineer read `server/tools/runbook.ts` and grepped
- * `server/sim/environment.ts` - the simulator, which contains the very root
- * cause the fleet is supposed to establish from evidence. An agent that reads
- * the answer out of our source has not diagnosed anything, and on screen it
- * makes an honest demo look staged.
- */
-function escapesWorkspace(
-  toolName: string,
-  input: Record<string, unknown>,
-  workspaceDir: string,
-): string | null {
-  const root = resolve(workspaceDir);
-
-  const outside = (candidate: string): boolean => {
-    const abs = isAbsolute(candidate) ? resolve(candidate) : resolve(root, candidate);
-    const rel = relative(root, abs);
-    return rel.startsWith('..') || isAbsolute(rel);
-  };
-
-  for (const field of PATH_FIELDS) {
-    const value = input[field];
-    if (typeof value === 'string' && value.trim() && outside(value)) return value;
-  }
-
-  // Bash can name paths anywhere in the command string.
-  if (toolName === 'Bash' && typeof input.command === 'string') {
-    for (const token of input.command.match(/(?:\/[\w.\-@+]+)+/g) ?? []) {
-      if (token.length > 4 && outside(token)) return token;
-    }
-  }
-  return null;
-}
-
-interface PendingApproval {
-  resolve: (r: PermissionResult) => void;
-  missionId: string;
-}
-
-/** Approvals waiting on a human, keyed by approval id. */
-const pending = new Map<string, PendingApproval>();
-
 /** Missions currently executing, so they can be cancelled. */
 const running = new Map<string, AbortController>();
 
@@ -99,63 +54,6 @@ export function cancelMission(missionId: string): boolean {
   if (!ctrl) return false;
   ctrl.abort();
   return true;
-}
-
-/**
- * Resolve a pending approval. Called by the API when a human decides.
- * Returns false if the approval is unknown or already decided.
- */
-export function resolveApproval(
-  approvalId: string,
-  decision: 'approved' | 'rejected',
-  decidedBy: string,
-  reason?: string,
-): boolean {
-  const entry = pending.get(approvalId);
-  if (!entry) return false;
-  pending.delete(approvalId);
-
-  const record = approvals.decide(approvalId, decision, decidedBy, reason);
-  bus.emitEvent({
-    missionId: entry.missionId,
-    type: 'approval.decided',
-    actor: decidedBy,
-    text:
-      decision === 'approved'
-        ? `Approved: ${record.summary}`
-        : `Rejected: ${record.summary}${reason ? ` - ${reason}` : ''}`,
-    data: record,
-  });
-
-  // The mission resumes as soon as the gate clears.
-  if (missions.get(entry.missionId)?.status === 'awaiting_approval') {
-    missions.setStatus(entry.missionId, 'running');
-    bus.publish({ channel: 'mission', payload: { missionId: entry.missionId, status: 'running' } });
-  }
-
-  entry.resolve(
-    decision === 'approved'
-      ? { behavior: 'allow', updatedInput: record.input as Record<string, unknown> }
-      : {
-          behavior: 'deny',
-          message:
-            `A human reviewer rejected this action${reason ? `: ${reason}` : '.'} ` +
-            `Do not retry it. Explain the consequence of not taking this action and what you recommend instead.`,
-        },
-  );
-  return true;
-}
-
-/** Human-readable description of a gated action, shown on the approval card. */
-function describeGatedAction(toolName: string, input: Record<string, unknown>): string {
-  if (toolName === 'mcp__github__open_pull_request') {
-    return `Open pull request "${input.title}" on branch ${input.branch}`;
-  }
-  if (toolName === 'mcp__runbook__execute_action') {
-    const spec = actionById(String(input.actionId));
-    return `${spec?.title ?? input.actionId} on ${input.target} (impact: ${spec?.impact ?? 'unknown'})`;
-  }
-  return `${toolName} ${JSON.stringify(input).slice(0, 120)}`;
 }
 
 export interface StartMissionArgs {
@@ -209,6 +107,7 @@ export async function runMission(missionId: string): Promise<void> {
 
   const abort = new AbortController();
   running.set(missionId, abort);
+  registerMissionAbort(missionId, abort);
   missions.setStatus(missionId, 'running');
   bus.publish({ channel: 'mission', payload: { missionId, status: 'running' } });
   bus.emitEvent({
@@ -235,70 +134,6 @@ export async function runMission(missionId: string): Promise<void> {
   let numTurns = 0;
   let sessionId = '';
 
-  const canUseTool = async (
-    toolName: string,
-    input: Record<string, unknown>,
-  ): Promise<PermissionResult> => {
-    const escaped = escapesWorkspace(toolName, input, workspaceDir);
-    if (escaped) {
-      bus.emitEvent({
-        missionId,
-        type: 'tool.result',
-        actor: 'system',
-        text: `Blocked ${toolName}: path outside the mission workspace (${escaped})`,
-        data: { blocked: true, toolName, path: escaped },
-      });
-      return {
-        behavior: 'deny',
-        message:
-          `Denied: ${escaped} is outside the mission workspace (${workspaceDir}). ` +
-          `You may only read and write inside the workspace. Everything you need about ` +
-          `the platform comes from the telemetry, changemgmt, runbook, and github tools - ` +
-          `use those rather than the filesystem.`,
-      };
-    }
-
-    if (!GATED_TOOLS.has(toolName)) return { behavior: 'allow' };
-
-    // Low-impact runbook actions do not need a human.
-    if (toolName === 'mcp__runbook__execute_action') {
-      const spec = actionById(String(input.actionId));
-      if (spec && !spec.requiresApproval) return { behavior: 'allow' };
-    }
-
-    const approvalId = nanoid(10);
-    const summary = describeGatedAction(toolName, input);
-    const record = approvals.create({
-      id: approvalId,
-      missionId,
-      actor: 'orchestrator',
-      toolName,
-      summary,
-      input,
-    });
-
-    missions.setStatus(missionId, 'awaiting_approval');
-    bus.publish({ channel: 'mission', payload: { missionId, status: 'awaiting_approval' } });
-    bus.emitEvent({
-      missionId,
-      type: 'approval.requested',
-      actor: 'orchestrator',
-      text: `Awaiting human go/no-go: ${summary}`,
-      data: record,
-    });
-    bus.publish({ channel: 'approval', payload: record });
-
-    return new Promise<PermissionResult>((resolve) => {
-      pending.set(approvalId, { resolve, missionId });
-      // If the mission is cancelled while waiting, release the gate.
-      abort.signal.addEventListener('abort', () => {
-        if (pending.delete(approvalId)) {
-          resolve({ behavior: 'deny', message: 'Mission cancelled by operator.' });
-        }
-      });
-    });
-  };
-
   const options: Options = {
     model: config.anthropic.orchestratorModel,
     systemPrompt: orchestratorSystemPrompt(workspaceDir),
@@ -307,15 +142,18 @@ export async function runMission(missionId: string): Promise<void> {
     // Keep the run isolated from whatever settings happen to exist on the host.
     settingSources: [],
     disallowedTools: DISALLOWED_TOOLS,
-    permissionMode: 'default',
-    canUseTool,
+    // The approval gate lives inside the gated tools (see orchestrator/approvals.ts),
+    // not in a permission callback: canUseTool is not reliably delivered for
+    // subagent tool calls, and a gate that silently stops firing is worse than
+    // no gate. Subagents get their scope from each agent's `tools` list instead.
+    permissionMode: 'bypassPermissions',
     abortController: abort,
     maxBudgetUsd: config.maxMissionCostUsd,
     effort: 'high',
     mcpServers: {
       telemetry: telemetryServer,
       changemgmt: changeMgmtServer,
-      runbook: runbookServer,
+        runbook: createRunbookServer({ missionId, actor: 'orchestrator' }),
       github: createGithubServer({ missionId, workspaceDir, actor: 'orchestrator' }),
     },
     env: { ...process.env, ANTHROPIC_API_KEY: config.anthropic.apiKey },
@@ -377,6 +215,7 @@ export async function runMission(missionId: string): Promise<void> {
     });
   } finally {
     running.delete(missionId);
+    releaseMissionAbort(missionId);
   }
 
   /* --------------------------------------------------- stream translation */
@@ -557,3 +396,4 @@ export function missionFromAlert(alertId: string): Mission | null {
 }
 
 export { artifacts };
+export { resolveApproval } from './approvals.ts';

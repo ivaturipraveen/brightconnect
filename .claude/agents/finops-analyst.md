@@ -5,9 +5,6 @@ department: platform
 role: Prices the change before it ships
 description: "Estimates the cost impact of a proposed change or remediation and flags optimisation opportunities."
 tools:
-  - Read
-  - Grep
-  - Glob
   - mcp__telemetry__query_alerts
   - mcp__telemetry__query_logs
   - mcp__telemetry__query_metrics

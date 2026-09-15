@@ -5,9 +5,6 @@ department: sre
 role: Cross-references logs against the alert window
 description: "Searches and correlates application and platform logs around an incident window to find the first real error."
 tools:
-  - Read
-  - Grep
-  - Glob
   - mcp__telemetry__query_alerts
   - mcp__telemetry__query_logs
   - mcp__telemetry__query_metrics

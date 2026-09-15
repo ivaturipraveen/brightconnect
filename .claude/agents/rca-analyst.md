@@ -5,9 +5,6 @@ department: sre
 role: Synthesises the evidence into a root cause
 description: "Synthesises findings from other investigators into a root cause analysis with a confidence level and a remediation recommendation."
 tools:
-  - Read
-  - Grep
-  - Glob
   - mcp__telemetry__query_alerts
   - mcp__telemetry__query_logs
   - mcp__telemetry__query_metrics
