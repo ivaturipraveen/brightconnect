@@ -31,13 +31,13 @@ will recognise his own words, and that is what makes it land.
 
 ```bash
 npm run preflight                                  # key, subagents, tools, GitHub
-npm run dev:stable                                 # no file watcher - see below
+npm run dev                                        # starts server + console
 curl -X POST http://localhost:8787/api/sim/reset   # put the incident back
 ```
 
-**Use `dev:stable`, not `dev`.** The normal dev script watches files and restarts the
-server on any change - which kills a running mission. Nobody should be editing during a
-demo, but an editor autosave or a sync client is enough to do it.
+`npm run dev` deliberately does not watch files: a watcher restarts the server on any
+change, which kills a running mission - an editor autosave is enough to do it. Use
+`npm run dev:watch` while developing, never before a demo.
 
 The mission view opens on the **Flow** tab. Leave it there while a mission runs - the
 delegation shape is what people want to see. **Activity** has the raw trail for anyone

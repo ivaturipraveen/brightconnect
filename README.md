@@ -162,12 +162,37 @@ scripts/preflight.ts     pre-demo check: key, subagents, tools, GitHub
 infra/                   EC2 deployment (systemd + nginx)
 docs/DEMO.md             the demo script
 data/                    SQLite database (gitignored)
-workspaces/              per-mission agent scratch space (gitignored)
+workspaces/              per-mission scratch space (gitignored)
 dist/                    built console (gitignored)
 ```
 
 One package, one `package.json`, one `npm install`. The server and the console
 share a dependency tree; `vite.config.ts` points at `web/` as its root.
+
+### Scripts
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Server + console. **Does not watch files** — a watcher restarts the server on any change and kills a running mission. |
+| `npm run dev:watch` | With the file watcher, for developing. Never before a demo. |
+| `npm run preflight` | Verifies the key, subagents, tools, and GitHub in ~30s. |
+| `npm run build` | Builds the console into `dist/`. |
+| `npm run typecheck` | Both server and console. |
+| `npm run clean` | Wipes the database, workspaces, and build output. |
+
+### What lives where
+
+Three directories hold everything that matters:
+
+- **`.claude/agents/`** — the 17 specialists, as Claude Code agent files. Edit these
+  to change behaviour; the same files also load in the Claude Code CLI.
+- **`server/`** — the backend: API, orchestrator, tools, event intake.
+- **`web/`** — the console.
+
+`data/` (SQLite), `workspaces/` (per-mission scratch), `dist/` (build output) and
+`node_modules/` are all generated and gitignored. Old workspaces are pruned
+automatically after 48 hours — the database keeps the record of what happened, the
+scratch files only matter while the work is live.
 
 ---
 

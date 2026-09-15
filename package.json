@@ -8,14 +8,15 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "concurrently -n server,web -c cyan,magenta \"npm:dev:server\" \"npm:dev:web\"",
+    "dev": "concurrently -n server,web -c cyan,magenta \"npm:start\" \"npm:dev:web\"",
+    "dev:watch": "concurrently -n server,web -c cyan,magenta \"npm:dev:server\" \"npm:dev:web\"",
     "dev:server": "tsx watch --env-file-if-exists=.env server/index.ts",
-    "dev:stable": "concurrently -n server,web -c cyan,magenta \"npm:start\" \"npm:dev:web\"",
     "dev:web": "vite",
-    "build": "vite build",
     "start": "tsx --env-file-if-exists=.env server/index.ts",
+    "build": "vite build",
     "preflight": "tsx --env-file-if-exists=.env scripts/preflight.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.web.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.web.json",
+    "clean": "rm -rf dist workspaces data/*.db data/*.db-shm data/*.db-wal"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.269",

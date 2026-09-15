@@ -25,11 +25,12 @@ import {
   cancelMission, createMission, isRunning, missionFromAlert,
   resolveApproval, startMissionInBackground,
 } from './orchestrator/run.ts';
-import { reconcileOrphanedMissions, resetIncident, seedAlerts } from './seed.ts';
+import { pruneWorkspaces, reconcileOrphanedMissions, resetIncident, seedAlerts } from './seed.ts';
 import { TEMPLATES } from './templates.ts';
 
 seedAlerts();
 const orphaned = reconcileOrphanedMissions();
+const pruned = pruneWorkspaces();
 
 const app = Fastify({ logger: { level: config.nodeEnv === 'production' ? 'warn' : 'info' } });
 await app.register(cors, { origin: true });
@@ -338,6 +339,7 @@ const banner = [
   `  Fleet: ${loadFleet().length} agents   Repo: ${config.github.owner}/${config.github.repo}`,
   `  Anthropic key: ${hasAnthropicKey() ? 'configured' : 'MISSING - missions will not run'}`,
   ...(orphaned ? [`  Closed out ${orphaned} mission(s) orphaned by the last restart`] : []),
+  ...(pruned ? [`  Pruned ${pruned} old mission workspace(s)`] : []),
   `  GitHub token:  ${hasGithubToken() ? 'configured' : 'missing - issues/PRs recorded locally'}`,
   hasGithubToken() && config.github.pollSeconds > 0
     ? `  Watching ${config.github.owner}/${config.github.repo} every ${config.github.pollSeconds}s` +
