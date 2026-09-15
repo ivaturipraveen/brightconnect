@@ -95,9 +95,17 @@ export interface FleetMember {
   department: 'sdlc' | 'sre' | 'platform';
   role: string;
   description: string;
+  /** Resolved model id this agent runs on. */
+  model: string;
   tools: string[];
   runs: number;
   succeeded: number;
+}
+
+export interface AgentFile {
+  id: string;
+  content: string;
+  member: { name: string; model: string };
 }
 
 export interface Template {
@@ -152,4 +160,16 @@ export const api = {
     }),
 
   artifacts: () => req<Artifact[]>('/artifacts'),
+
+  agentFile: (id: string) => req<AgentFile>(`/agents/${id}`),
+  validateAgent: (id: string, content: string) =>
+    req<{ ok: boolean; error?: string }>(`/agents/${id}/validate`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    }),
+  saveAgent: (id: string, content: string) =>
+    req<{ ok: boolean; id: string; model: string; name: string }>(`/agents/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ content }),
+    }),
 };

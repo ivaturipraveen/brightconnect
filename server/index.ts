@@ -12,7 +12,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { config, hasAnthropicKey, hasGithubToken } from './config.ts';
-import { FLEET } from './agents/fleet.ts';
+import { loadFleet, readAgentFile, validateAgentFile, writeAgentFile } from './agents/fleet.ts';
 import { fleetSummary } from './orchestrator/prompts.ts';
 import {
   agentRuns, alerts, approvals, artifacts, events, missions,
@@ -49,18 +49,54 @@ app.get('/api/config', async () => ({
     anthropic: hasAnthropicKey(),
     github: hasGithubToken(),
   },
-  fleetSize: FLEET.length,
+  fleetSize: loadFleet().length,
 }));
 
 /* ----------------------------------------------------------------- fleet */
 
 app.get('/api/fleet', async () => {
-  const stats = new Map(agentRuns.stats().map((s) => [s.agentType, s]));
+  const stats = new Map(agentRuns.stats().map((s) => [s.agentType, s] as const));
   return fleetSummary().map((m) => ({
     ...m,
     runs: stats.get(m.id)?.runs ?? 0,
     succeeded: stats.get(m.id)?.succeeded ?? 0,
   }));
+});
+
+/** Raw agent definition file, for the prompt editor. */
+app.get('/api/agents/:id', async (req, reply) => {
+  const { id } = req.params as { id: string };
+  const member = loadFleet().find((m) => m.id === id);
+  if (!member) return reply.code(404).send({ error: 'No such agent' });
+  try {
+    return { id, content: readAgentFile(id), member: { name: member.name, model: member.model } };
+  } catch (err) {
+    return reply.code(500).send({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+const agentBody = z.object({ content: z.string().min(1) });
+
+/** Validate an edit without saving it, so the editor can warn as you type. */
+app.post('/api/agents/:id/validate', async (req, reply) => {
+  const { id } = req.params as { id: string };
+  const parsed = agentBody.safeParse(req.body);
+  if (!parsed.success) return reply.code(400).send({ error: 'Invalid body' });
+  return validateAgentFile(id, parsed.data.content);
+});
+
+app.put('/api/agents/:id', async (req, reply) => {
+  const { id } = req.params as { id: string };
+  const parsed = agentBody.safeParse(req.body);
+  if (!parsed.success) return reply.code(400).send({ error: 'Invalid body' });
+  try {
+    const member = writeAgentFile(id, parsed.data.content);
+    // Definitions are read from disk per mission, so this applies to the next
+    // mission immediately - no restart.
+    return { ok: true, id, model: member.model, name: member.name };
+  } catch (err) {
+    return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+  }
 });
 
 /* -------------------------------------------------------------- missions */
@@ -209,7 +245,7 @@ await app.listen({ port: config.port, host: '0.0.0.0' });
 const banner = [
   ``,
   `  ${config.productName} API listening on http://localhost:${config.port}`,
-  `  Fleet: ${FLEET.length} agents   Repo: ${config.github.owner}/${config.github.repo}`,
+  `  Fleet: ${loadFleet().length} agents   Repo: ${config.github.owner}/${config.github.repo}`,
   `  Anthropic key: ${hasAnthropicKey() ? 'configured' : 'MISSING - missions will not run'}`,
   ...(orphaned ? [`  Closed out ${orphaned} mission(s) orphaned by the last restart`] : []),
   `  GitHub token:  ${hasGithubToken() ? 'configured' : 'missing - issues/PRs recorded locally'}`,

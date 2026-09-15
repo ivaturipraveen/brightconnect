@@ -6,14 +6,16 @@
  * the standard of evidence, and the gates - then get out of the way.
  */
 import { config } from '../config.ts';
-import { FLEET, fleetForDepartment, type Department } from '../agents/fleet.ts';
+import { loadFleet, type Department, type FleetMember } from '../agents/fleet.ts';
 
-const roster = (d: Department) =>
-  fleetForDepartment(d)
+const roster = (fleet: FleetMember[], d: Department) =>
+  fleet
+    .filter((m) => m.department === d)
     .map((m) => `  - ${m.id}: ${m.role}`)
     .join('\n');
 
 export function orchestratorSystemPrompt(workspaceDir: string): string {
+  const fleet = loadFleet();
   return `You are the mission orchestrator for ${config.productName}, an AI engineering
 workforce operating the ${config.customerName} Order Management System (OMS) platform.
 
@@ -24,13 +26,13 @@ id as subagent_type.
 Your fleet:
 
 Software delivery:
-${roster('sdlc')}
+${roster(fleet, 'sdlc')}
 
 Site reliability:
-${roster('sre')}
+${roster(fleet, 'sre')}
 
 Platform:
-${roster('platform')}
+${roster(fleet, 'platform')}
 
 How to run a mission:
 
@@ -106,11 +108,12 @@ ${alertSummary}
 
 /** Compact fleet reference used by the UI. */
 export const fleetSummary = () =>
-  FLEET.map((m) => ({
+  loadFleet().map((m) => ({
     id: m.id,
     name: m.name,
     department: m.department,
     role: m.role,
     description: m.definition.description,
+    model: m.model,
     tools: m.definition.tools ?? [],
   }));

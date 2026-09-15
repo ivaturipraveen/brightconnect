@@ -21,9 +21,9 @@ export const config = {
   anthropic: {
     apiKey: process.env.ANTHROPIC_API_KEY ?? '',
     /** The agent that plans the mission and delegates to the fleet. */
-    orchestratorModel: env('ORCHESTRATOR_MODEL', 'claude-opus-5'),
+    orchestratorModel: env('ORCHESTRATOR_MODEL', 'claude-haiku-4-5'),
     /** Default model for fleet members. Overridable per agent. */
-    agentModel: env('AGENT_MODEL', 'claude-opus-5'),
+    agentModel: env('AGENT_MODEL', 'claude-haiku-4-5'),
   },
 
   github: {

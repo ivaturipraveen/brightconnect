@@ -7,6 +7,7 @@ import { useActivityStream } from '../lib/stream.ts';
 import {
   Badge, Button, Empty, Metric, Panel, StatusDot, fmtCost, fmtDuration, relTime, type Tone,
 } from '../components/ui.tsx';
+import MissionFlow from '../components/MissionFlow.tsx';
 
 const EVENT_STYLE: Record<string, { tone: Tone; label: string }> = {
   'mission.created': { tone: 'neutral', label: 'mission' },
@@ -32,6 +33,8 @@ export default function MissionDetail() {
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [showReasoning, setShowReasoning] = useState(false);
+  // Flow first: the delegation shape is what people want to see during a run.
+  const [view, setView] = useState<'flow' | 'activity'>('flow');
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -116,21 +119,48 @@ export default function MissionDetail() {
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <Panel
-          title="Activity"
+          title={
+            <div className="flex items-center gap-1">
+              {(['flow', 'activity'] as const).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setView(v)}
+                  className={`rounded px-2 py-0.5 text-[12px] font-semibold uppercase tracking-wide transition-colors ${
+                    view === v ? 'bg-ink-700 text-ink-100' : 'text-ink-400 hover:text-ink-200'
+                  }`}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+          }
           dense
           actions={
-            <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-ink-400">
-              <input
-                type="checkbox"
-                checked={showReasoning}
-                onChange={(e) => setShowReasoning(e.target.checked)}
-                className="accent-signal-500"
-              />
-              show reasoning
-            </label>
+            view === 'activity' ? (
+              <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-ink-400">
+                <input
+                  type="checkbox"
+                  checked={showReasoning}
+                  onChange={(e) => setShowReasoning(e.target.checked)}
+                  className="accent-signal-500"
+                />
+                show reasoning
+              </label>
+            ) : (
+              <span className="text-[11px] text-ink-500">click an agent to see its report</span>
+            )
           }
         >
-          <ActivityFeed events={visibleEvents} live={isLive} />
+          {view === 'flow' ? (
+            <MissionFlow
+              agents={agents}
+              events={events}
+              missionKind={mission.kind}
+              missionStatus={mission.status}
+            />
+          ) : (
+            <ActivityFeed events={visibleEvents} live={isLive} />
+          )}
         </Panel>
 
         <div className="space-y-4">

@@ -13,7 +13,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { nanoid } from 'nanoid';
 import { config, hasAnthropicKey } from '../config.ts';
-import { agentDefinitions, FLEET_BY_ID } from '../agents/fleet.ts';
+import { agentDefinitions, loadFleet } from '../agents/fleet.ts';
 import { agentRuns, alerts, approvals, artifacts, missions } from '../db.ts';
 import { bus } from '../bus.ts';
 import { createGithubServer } from '../tools/github.ts';
@@ -217,6 +217,10 @@ export async function runMission(missionId: string): Promise<void> {
     actor: 'orchestrator',
     text: `Orchestrator engaged. Workspace ${workspaceDir}`,
   });
+
+  // Snapshot the fleet once per mission: definitions are read from disk, and a
+  // mid-mission edit should not change the agents this run is using.
+  const fleetSnapshot = new Map(loadFleet().map((m) => [m.id, m]));
 
   /** toolUseId -> fleet member id, so we can attribute messages to an agent. */
   const agentByToolUse = new Map<string, string>();
@@ -444,7 +448,7 @@ export async function runMission(missionId: string): Promise<void> {
     // A delegation: the orchestrator engaging a specialist.
     if (toolName === 'Agent' || toolName === 'Task') {
       const agentType = String(input.subagent_type ?? 'unknown');
-      const member = FLEET_BY_ID.get(agentType);
+      const member = fleetSnapshot.get(agentType);
       agentByToolUse.set(toolUseId, agentType);
       agentRuns.start({
         id: nanoid(10),
@@ -483,7 +487,7 @@ export async function runMission(missionId: string): Promise<void> {
     if (agentType) {
       const failed = Boolean(block.is_error);
       agentRuns.finishByToolUseId(toolUseId, failed ? 'failed' : 'succeeded', raw.slice(0, 20_000));
-      const member = FLEET_BY_ID.get(agentType);
+      const member = fleetSnapshot.get(agentType);
       bus.emitEvent({
         missionId,
         type: 'agent.finished',
