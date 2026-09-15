@@ -238,9 +238,10 @@ not alter how the fleet behaves. Saves are validated first; a file that would no
 load is rejected and the original is left untouched.
 
 The orchestrator's own brief is editable the same way, from the same page. It
-lives in `dashboard/server/orchestrator/orchestrator.md` and uses placeholders —
-`{{ROSTER_SDLC}}`, `{{TOOLS}}`, `{{PROJECT_MAP}}` — for the sections generated
-from the live fleet, so adding an agent updates its roster with no edit at all.
+lives in `dashboard/server/orchestrator/orchestrator.md`. Five placeholders —
+`{{ROSTER_SDLC}}`, `{{ROSTER_SRE}}`, `{{ROSTER_PLATFORM}}`, `{{TOOLS}}` and
+`{{PROJECT_MAP}}` — cover the sections generated from the live fleet, so adding
+an agent updates its roster with no edit at all. Everything else is plain text.
 
 Changes apply to the **next** mission. A running mission keeps the definitions it
 started with, so editing mid-demo cannot destabilise a run in progress.

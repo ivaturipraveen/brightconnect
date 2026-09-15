@@ -8,7 +8,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from '@anthropic-ai/claude-agent-sdk';
-import { config } from '../config.ts';
 import { loadFleet, type Department, type FleetMember } from '../agents/fleet.ts';
 import { projectMap } from '../workspace.ts';
 
@@ -64,7 +63,6 @@ export const readOrchestratorPrompt = (): string => readFileSync(ORCHESTRATOR_FI
 
 /** The placeholders the file may use, and what each one expands to. */
 export const ORCHESTRATOR_PLACEHOLDERS = [
-  { token: '{{PRODUCT_NAME}}', describes: 'the platform name' },
   { token: '{{ROSTER_SDLC}}', describes: 'the software delivery agents, generated' },
   { token: '{{ROSTER_SRE}}', describes: 'the site reliability agents, generated' },
   { token: '{{ROSTER_PLATFORM}}', describes: 'the platform agents, generated' },
@@ -76,7 +74,6 @@ export const ORCHESTRATOR_PLACEHOLDERS = [
 function expand(template: string): string {
   const fleet = loadFleet();
   return template
-    .replaceAll('{{PRODUCT_NAME}}', config.productName)
     .replaceAll('{{ROSTER_SDLC}}', roster(fleet, 'sdlc'))
     .replaceAll('{{ROSTER_SRE}}', roster(fleet, 'sre'))
     .replaceAll('{{ROSTER_PLATFORM}}', roster(fleet, 'platform'))
