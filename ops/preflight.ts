@@ -10,6 +10,8 @@
  * Run:  npm run preflight
  */
 import { query } from '@anthropic-ai/claude-agent-sdk';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { Octokit } from '@octokit/rest';
 import { config, hasAnthropicKey, hasGithubToken } from '../dashboard/server/config.ts';
 import { changeMgmtServer, telemetryServer } from '../dashboard/server/tools/telemetry.ts';
@@ -106,7 +108,61 @@ for (const [server, tools] of Object.entries(EXPECTED)) {
   }
 }
 
-/* -------------------------------------- 4. subagent + MCP tool inheritance */
+/* ------------------------------------------------------------- 4. sandbox */
+
+/**
+ * Missions run sandboxed, and the sandbox has OS dependencies.
+ *
+ * On a box without bubblewrap and socat, every mission fails on its first turn
+ * with "Sandbox required but unavailable" - while the dashboard serves happily
+ * and every other check here passes. That combination is how a deployment ends
+ * up looking healthy and being incapable of running a single agent, so the
+ * sandbox is now exercised exactly as a mission configures it.
+ */
+console.log('\nSandbox');
+
+const sandboxProbe = join(config.paths.data, 'preflight-sandbox');
+mkdirSync(sandboxProbe, { recursive: true });
+
+let sandboxOk = false;
+let sandboxError = '';
+try {
+  for await (const message of query({
+    prompt: 'Reply with the single word: ready',
+    options: {
+      model: platformModel(),
+      cwd: sandboxProbe,
+      settingSources: [],
+      permissionMode: 'default',
+      sandbox: {
+        enabled: true,
+        failIfUnavailable: true,
+        autoAllowBashIfSandboxed: true,
+        filesystem: { allowWrite: [sandboxProbe] },
+      },
+      maxTurns: 1,
+      maxBudgetUsd: 0.5,
+      env: { ...process.env, ANTHROPIC_API_KEY: config.anthropic.apiKey },
+    },
+  })) {
+    if (message.type === 'result') {
+      if (message.subtype === 'success') sandboxOk = true;
+      else sandboxError = (message as any).result ?? message.subtype;
+    }
+  }
+} catch (err) {
+  sandboxError = err instanceof Error ? err.message : String(err);
+}
+
+if (sandboxOk) {
+  pass('sandbox available - missions can run');
+} else {
+  fail(`sandbox unavailable: ${sandboxError.slice(0, 200)}`);
+  info('on Ubuntu: sudo apt-get install -y bubblewrap socat');
+  failures++;
+}
+
+/* -------------------------------------- 5. subagent + MCP tool inheritance */
 
 console.log('\nAgent fleet');
 info('spawning a probe subagent that must call an MCP tool…');
@@ -173,7 +229,7 @@ try {
   failures++;
 }
 
-/* -------------------------------------------------------------- 5. GitHub */
+/* -------------------------------------------------------------- 6. GitHub */
 
 console.log('\nGitHub');
 if (!hasGithubToken()) {

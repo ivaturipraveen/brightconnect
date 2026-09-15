@@ -9,7 +9,10 @@ APP_DIR=/opt/brightconnect
 echo "==> Installing Node 24, nginx and tooling"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq curl ca-certificates gnupg rsync nginx git
+# bubblewrap and socat are what the agent sandbox is built on. Without them
+# every mission fails instantly with "Sandbox required but unavailable" - the
+# box serves the dashboard perfectly and cannot run a single agent.
+apt-get install -y -qq curl ca-certificates gnupg rsync nginx git bubblewrap socat
 curl -fsSL https://deb.nodesource.com/setup_24.x | bash - >/dev/null
 apt-get install -y -qq nodejs
 echo "    node $(node -v), npm $(npm -v)"

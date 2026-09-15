@@ -166,9 +166,30 @@ theme" produces a reviewable diff rather than a dump of the codebase.
 | `npm run dev` | Server + console. **Does not watch files** — a watcher restarts the server on any change and kills a running mission. |
 | `npm run dev:watch` | With the file watcher, for developing. Never before a demo. |
 | `npm run preflight` | Verifies the key, subagents, tools, and GitHub in ~30s. |
+| `npm run clear` | Empties the board before a demo — see below. |
 | `npm run build` | Builds the console into `dist/`. |
 | `npm run typecheck` | Both server and console. |
 | `npm run clean` | Wipes the database, workspaces, and build output. |
+
+### Clearing the board
+
+`npm run clear` deletes every mission and everything hanging off one — agent
+runs, the event trail, approvals, artifacts, inbound events — along with the
+documents, uploads and workspaces on disk. Two things deliberately survive: the
+simulated alerts, because they are the world the incident demo investigates, and
+the saved model setting.
+
+It also marks any ticket that is open at that moment as already handled. The
+poll id is stable per issue, so without this the next poll re-dispatches every
+open ticket the fleet has already worked — thirty seconds after clearing the
+board for a demo, a mission nobody asked for appears on it. A ticket filed
+*after* the clear still triggers normally.
+
+**The dashboard and the EC2 box share one database.** Clearing from either
+clears both, and — worth knowing before a demo — if you leave the dashboard
+running locally while EC2 is up, both poll the same repository and whichever
+polls first runs the mission. Work can land on the laptop instead of the server
+with nothing in the UI to say so. Run one or the other.
 
 ### What lives where
 
