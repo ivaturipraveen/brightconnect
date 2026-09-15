@@ -76,6 +76,23 @@ const PATH_FIELDS = ['file_path', 'path', 'notebook_path', 'cwd'];
 const NPM_CACHE_DIR = join(config.paths.data, 'npm-cache');
 mkdirSync(NPM_CACHE_DIR, { recursive: true });
 
+/**
+ * A home directory the sandboxed agents are allowed to have.
+ *
+ * The service account's real home is outside the sandbox, so every Bash call
+ * opened with "/home/brightconnect/.bash_profile: Permission denied" - bash
+ * looking for a login profile it is not allowed to stat. Harmless, and prefixed
+ * to every command's output in the activity view, which is the part of this
+ * platform people are meant to read.
+ *
+ * Safe to move because nothing in a mission depends on the real home: the API
+ * key arrives through env, and pull requests are built through GitHub's git
+ * data API rather than a local clone, so there is no ~/.gitconfig or credential
+ * helper in the path.
+ */
+const AGENT_HOME_DIR = join(config.paths.data, 'agent-home');
+mkdirSync(AGENT_HOME_DIR, { recursive: true });
+
 /** Paths a shell names that are devices, not files in the workspace. */
 const SHELL_DEVICES = new Set([
   '/dev/null', '/dev/zero', '/dev/stdin', '/dev/stdout', '/dev/stderr', '/dev/tty', '/dev/urandom',
@@ -283,7 +300,7 @@ export async function runMission(missionId: string): Promise<void> {
       // would re-download the dependency tree every run, and without it npm
       // cannot write at all - `npm ci` fails EPERM on the user's ~/.npm and the
       // QA agent never gets to run the tests, which is most of what it is for.
-      allowWrite: [workspaceDir, NPM_CACHE_DIR],
+      allowWrite: [workspaceDir, NPM_CACHE_DIR, AGENT_HOME_DIR],
       denyWrite: [projectRoot],
     },
   };
@@ -317,6 +334,7 @@ export async function runMission(missionId: string): Promise<void> {
       // Point npm at the cache the sandbox allows, so an agent never has to
       // discover the problem and invent a --cache flag of its own.
       npm_config_cache: NPM_CACHE_DIR,
+      HOME: AGENT_HOME_DIR,
     },
   };
 
