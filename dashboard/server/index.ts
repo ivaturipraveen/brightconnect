@@ -161,6 +161,34 @@ app.post('/api/agents/:id/validate', async (req, reply) => {
   return validateAgentFile(id, parsed.data.content);
 });
 
+/**
+ * Change one agent's model without opening the whole file.
+ *
+ * Model choice is the setting people actually want to change - a cheap agent
+ * for retrieval, an expensive one for synthesis - and making that a text edit
+ * in YAML is a good way to ensure nobody ever does it.
+ */
+app.patch('/api/agents/:id/model', async (req, reply) => {
+  const { id } = req.params as { id: string };
+  const parsed = z.object({ model: z.enum(['haiku', 'sonnet', 'opus']) }).safeParse(req.body);
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'model must be haiku, sonnet or opus' });
+  }
+  const member = loadFleet().find((m) => m.id === id);
+  if (!member) return reply.code(404).send({ error: 'No such agent' });
+
+  try {
+    const raw = readAgentFile(id);
+    const next = /^model:\s*.*$/m.test(raw)
+      ? raw.replace(/^model:\s*.*$/m, `model: ${parsed.data.model}`)
+      : raw.replace(/^---\s*$/m, `model: ${parsed.data.model}\n---`);
+    const saved = writeAgentFile(id, next);
+    return { ok: true, id, model: saved.model };
+  } catch (err) {
+    return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
 app.put('/api/agents/:id', async (req, reply) => {
   const { id } = req.params as { id: string };
   const parsed = agentBody.safeParse(req.body);

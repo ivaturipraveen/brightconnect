@@ -227,6 +227,11 @@ export const api = {
   },
 
   agentFile: (id: string) => req<AgentFile>(`/agents/${id}`),
+  setAgentModel: (id: string, model: 'haiku' | 'sonnet' | 'opus') =>
+    req<{ ok: boolean; id: string; model: string }>(`/agents/${id}/model`, {
+      method: 'PATCH',
+      body: JSON.stringify({ model }),
+    }),
   validateAgent: (id: string, content: string) =>
     req<{ ok: boolean; error?: string }>(`/agents/${id}/validate`, {
       method: 'POST',

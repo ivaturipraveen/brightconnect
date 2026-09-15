@@ -8,14 +8,12 @@ import MissionControl from './pages/MissionControl.tsx';
 import MissionDetail from './pages/MissionDetail.tsx';
 import Fleet from './pages/Fleet.tsx';
 import Incidents from './pages/Incidents.tsx';
-import Governance from './pages/Governance.tsx';
 
 const NAV = [
   { to: '/console', label: 'Console' },
   { to: '/missions', label: 'Mission Control' },
   { to: '/incidents', label: 'Incidents' },
   { to: '/fleet', label: 'Agent Fleet' },
-  { to: '/governance', label: 'Governance' },
 ];
 
 export default function App() {
@@ -69,7 +67,7 @@ export default function App() {
                 }
               >
                 {item.label}
-                {item.to === '/governance' && pending.length > 0 && (
+                {item.to === '/missions' && pending.length > 0 && (
                   <span className="ml-1.5 rounded bg-warn-500/20 px-1.5 py-0.5 text-[11px] font-semibold text-warn-400">
                     {pending.length}
                   </span>
@@ -98,7 +96,6 @@ export default function App() {
           <Route path="/missions/:id" element={<MissionDetail />} />
           <Route path="/incidents" element={<Incidents />} />
           <Route path="/fleet" element={<Fleet />} />
-          <Route path="/governance" element={<Governance />} />
           <Route path="*" element={<Navigate to="/console" replace />} />
         </Routes>
       </main>

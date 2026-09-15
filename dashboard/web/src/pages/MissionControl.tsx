@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, type InboundEvent, type Mission, type MissionKind, type Template } from '../lib/api.ts';
+import { api, type Artifact, type InboundEvent, type Mission, type MissionEvent, type MissionKind, type Template } from '../lib/api.ts';
 import { useActivityStream } from '../lib/stream.ts';
 import {
   Badge, Button, Empty, Panel, StatusDot, fmtCost, fmtDuration, relTime, type Tone,
@@ -39,11 +39,16 @@ export default function MissionControl() {
   const [missions, setMissions] = useState<Mission[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [inbound, setInbound] = useState<InboundEvent[]>([]);
+  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  const [trail, setTrail] = useState<MissionEvent[]>([]);
+  const [tab, setTab] = useState<'missions' | 'artifacts' | 'audit'>('missions');
   const [composerOpen, setComposerOpen] = useState(false);
 
   const load = () => {
     void api.missions().then(setMissions).catch(() => {});
     void api.inboundEvents().then(setInbound).catch(() => {});
+    void api.artifacts().then(setArtifacts).catch(() => {});
+    void fetch('/api/events').then((r) => r.json()).then(setTrail).catch(() => {});
   };
 
   useEffect(() => {
@@ -82,21 +87,115 @@ export default function MissionControl() {
 
       <Intake events={inbound} onChanged={load} />
 
-      <Panel title={`Active missions${active.length ? ` (${active.length})` : ''}`} dense>
-        {active.length === 0 ? (
-          <div className="p-4">
-            <Empty>No missions running. Launch one above, or trigger an incident.</Empty>
+      <Panel
+        title={
+          <div className="flex items-center gap-1">
+            {([
+              ['missions', `Missions${active.length ? ` (${active.length})` : ''}`],
+              ['artifacts', `Artifacts${artifacts.length ? ` (${artifacts.length})` : ''}`],
+              ['audit', 'Audit trail'],
+            ] as const).map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => setTab(id)}
+                className={`rounded px-2 py-0.5 text-[12px] font-semibold uppercase tracking-wide transition-colors ${
+                  tab === id ? 'bg-ink-800 text-ink-100' : 'text-ink-400 hover:text-ink-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
-        ) : (
-          <MissionTable missions={active} />
+        }
+        dense
+        actions={
+          <span className="text-[11px] text-ink-500">
+            {tab === 'audit'
+              ? 'every gated decision and outcome, appended not rewritten'
+              : tab === 'artifacts'
+                ? 'what the fleet produced'
+                : ''}
+          </span>
+        }
+      >
+        {tab === 'missions' && (
+          <>
+            {active.length > 0 && <MissionTable missions={active} />}
+            {done.length > 0 && (
+              <>
+                {active.length > 0 && (
+                  <div className="border-t border-ink-800 bg-ink-850/60 px-4 py-1 text-[10px] uppercase tracking-wide text-ink-500">
+                    Finished
+                  </div>
+                )}
+                <MissionTable missions={done} />
+              </>
+            )}
+            {missions.length === 0 && (
+              <div className="p-4">
+                <Empty>Nothing yet. Describe a task in the Console, or file a ticket on GitHub.</Empty>
+              </div>
+            )}
+          </>
         )}
-      </Panel>
 
-      <Panel title="History" dense>
-        {done.length === 0 ? (
-          <div className="p-4"><Empty>Completed missions will appear here.</Empty></div>
-        ) : (
-          <MissionTable missions={done} />
+        {tab === 'artifacts' && (
+          artifacts.length === 0 ? (
+            <div className="p-4"><Empty>No pull requests or tickets yet.</Empty></div>
+          ) : (
+            <ul className="divide-y divide-ink-800">
+              {artifacts.map((a) => (
+                <li key={a.id} className="px-4 py-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone={a.kind === 'pull_request' ? 'ok' : 'info'}>
+                      {a.kind.replace('_', ' ')}
+                    </Badge>
+                    <span className="text-[13px] text-ink-100">{a.title}</span>
+                    <Link to={`/missions/${a.missionId}`} className="text-[11px] text-ink-500 hover:text-signal-300">
+                      mission {a.missionId}
+                    </Link>
+                    <span className="ml-auto text-[11px] text-ink-500">{relTime(a.createdAt)}</span>
+                  </div>
+                  {a.url ? (
+                    <a href={a.url} target="_blank" rel="noreferrer" className="truncate text-[11px] text-signal-300 hover:underline">
+                      {a.url}
+                    </a>
+                  ) : (
+                    <span className="text-[11px] text-ink-500">recorded locally — no GitHub token</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )
+        )}
+
+        {tab === 'audit' && (
+          (() => {
+            const decisions = trail.filter((e) =>
+              ['approval.requested', 'approval.decided', 'artifact.created', 'mission.finished', 'error'].includes(e.type),
+            );
+            return decisions.length === 0 ? (
+              <div className="p-4"><Empty>No recorded decisions yet.</Empty></div>
+            ) : (
+              <ul className="max-h-[60vh] divide-y divide-ink-800 overflow-y-auto">
+                {decisions.slice().reverse().map((e) => (
+                  <li key={e.id} className="px-4 py-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone={e.type === 'error' ? 'crit' : e.type === 'artifact.created' ? 'ok' : e.type.startsWith('approval') ? 'warn' : 'neutral'}>
+                        {e.type}
+                      </Badge>
+                      <span className="font-mono text-[11px] text-ink-400">{e.actor}</span>
+                      <Link to={`/missions/${e.missionId}`} className="text-[11px] text-ink-500 hover:text-signal-300">
+                        {e.missionId}
+                      </Link>
+                      <span className="ml-auto text-[11px] text-ink-500">{relTime(e.createdAt)}</span>
+                    </div>
+                    {e.text && <div className="mt-1 line-clamp-2 text-[12px] leading-snug text-ink-300">{e.text}</div>}
+                  </li>
+                ))}
+              </ul>
+            );
+          })()
         )}
       </Panel>
     </div>
