@@ -225,6 +225,93 @@ export function createConsoleServer(ctx: ConsoleContext) {
     },
   );
 
+  const listOpenPulls = tool(
+    'list_open_pulls',
+    'List the open pull requests, so you can find the one someone means without being told the number.',
+    {},
+    async () => {
+      const gh = octokit();
+      if (!gh) return text('No GitHub token is configured, so pull requests cannot be listed.');
+      const { data } = await gh.pulls.list({
+        owner: config.github.owner,
+        repo: config.github.repo,
+        state: 'open',
+        per_page: 20,
+      });
+      return text(
+        data.length
+          ? data.map((p) => `#${p.number} ${p.title} (${p.head.ref})`).join('\n')
+          : 'No open pull requests.',
+      );
+    },
+  );
+
+  /**
+   * Land and close, directly.
+   *
+   * These are not gated the way the fleet's are: the person typing "merge #7"
+   * into the console IS the human decision, and asking them to approve their
+   * own instruction on another page is ceremony, not control. The fleet's own
+   * versions still stop for approval, because nobody asked for those.
+   */
+  const mergePull = tool(
+    'merge_pull_request',
+    'Merge an open pull request. Use when the person asks to merge or land a PR.',
+    {
+      number: z.number().int().positive().describe('The pull request number.'),
+      method: z.enum(['merge', 'squash', 'rebase']).optional().describe('Defaults to squash.'),
+    },
+    async ({ number, method }) => {
+      const gh = octokit();
+      if (!gh) return text('No GitHub token is configured, so nothing can be merged.');
+      try {
+        const pr = await gh.pulls.get({ owner: config.github.owner, repo: config.github.repo, pull_number: number });
+        if (pr.data.merged) return text(`#${number} was already merged.`);
+        if (pr.data.state !== 'open') return text(`#${number} is ${pr.data.state}, so it cannot be merged.`);
+        if (pr.data.mergeable === false) {
+          return text(`#${number} conflicts with the base branch. It needs the conflicts resolved before it can land.`);
+        }
+        const res = await gh.pulls.merge({
+          owner: config.github.owner,
+          repo: config.github.repo,
+          pull_number: number,
+          merge_method: method ?? 'squash',
+        });
+        return text(`Merged #${number} (${res.data.sha.slice(0, 7)}) - ${pr.data.title}\n${pr.data.html_url}`);
+      } catch (err: any) {
+        if (err?.status === 404) return text(`Pull request #${number} does not exist.`);
+        return text(`Could not merge #${number}: ${err?.message ?? String(err)}`);
+      }
+    },
+  );
+
+  const closeTicket = tool(
+    'close_issue',
+    'Close an issue once its work is delivered. Use when the person asks to close a ticket.',
+    {
+      number: z.number().int().positive().describe('The issue number.'),
+      comment: z.string().optional().describe('A closing note, e.g. which pull request delivered it.'),
+    },
+    async ({ number, comment }) => {
+      const gh = octokit();
+      if (!gh) return text('No GitHub token is configured, so nothing can be closed.');
+      try {
+        if (comment?.trim()) {
+          await gh.issues.createComment({
+            owner: config.github.owner, repo: config.github.repo, issue_number: number, body: comment,
+          });
+        }
+        const res = await gh.issues.update({
+          owner: config.github.owner, repo: config.github.repo, issue_number: number, state: 'closed',
+        });
+        return text(`Closed #${number} - ${res.data.title}\n${res.data.html_url}`);
+      } catch (err: any) {
+        if (err?.status === 404) return text(`Issue #${number} does not exist.`);
+        return text(`Could not close #${number}: ${err?.message ?? String(err)}`);
+      }
+    },
+  );
+
   const readAttachment = tool(
     'read_attachment',
     'Read a file the person attached to this conversation. Use it before answering questions about an attached document.',
@@ -249,7 +336,8 @@ export function createConsoleServer(ctx: ConsoleContext) {
       'Read the platform state, and start missions when someone asks for work to be done.',
     tools: [
       listMissions, describeMission, describeFleet, platformStatus,
-      readIssue, listOpenIssues, launchMission, readAttachment,
+      readIssue, listOpenIssues, listOpenPulls, mergePull, closeTicket,
+      launchMission, readAttachment,
     ],
   });
 }

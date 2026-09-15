@@ -42,6 +42,8 @@ Your own tools, by exact name - these are yours to call directly:
   mcp__github__create_issue           file a ticket
   mcp__github__comment_issue          add to a ticket
   mcp__github__open_pull_request      open a PR - PAUSES FOR HUMAN APPROVAL
+  mcp__github__merge_pull_request     land an approved PR - PAUSES FOR HUMAN APPROVAL
+  mcp__github__close_issue            close a delivered ticket - PAUSES FOR HUMAN APPROVAL
 
   Agent                               delegate to a specialist
   Read, Write, Edit, Glob, Grep       the mission workspace

@@ -250,6 +250,94 @@ export function createGithubServer(ctx: GithubToolContext) {
     },
   );
 
+  /**
+   * Land an approved pull request.
+   *
+   * Opening a PR was the end of the road: the platform could raise work for
+   * review and then had no way to land it, so "merge it and close the ticket"
+   * was an instruction nobody could carry out. Gated like every other change to
+   * the outside world - a merge rewrites the default branch.
+   */
+  const mergePullRequest = tool(
+    'merge_pull_request',
+    'Merge an open pull request into the default branch. Requires human approval before it runs.',
+    {
+      number: z.number().int().positive().describe('The pull request number, e.g. 7.'),
+      method: z.enum(['merge', 'squash', 'rebase']).optional()
+        .describe('How to land it. Defaults to squash, which keeps main readable.'),
+    },
+    async ({ number, method }) => {
+      const gh = octokit();
+      if (!gh) return text('No GitHub token configured, so nothing can be merged.');
+
+      const decision = await requestApproval({
+        missionId: ctx.missionId,
+        actor: ctx.actor,
+        toolName: 'mcp__github__merge_pull_request',
+        summary: `Merge pull request #${number} into ${repoRef.repo}'s default branch`,
+        input: { number, method: method ?? 'squash' },
+      });
+      if (!decision.approved) {
+        return text(`Merge of #${number} was rejected${decision.reason ? `: ${decision.reason}` : ''}.`);
+      }
+
+      try {
+        const pr = await gh.pulls.get({ ...repoRef, pull_number: number });
+        if (pr.data.merged) return text(`#${number} was already merged.`);
+        if (pr.data.state !== 'open') return text(`#${number} is ${pr.data.state}, so it cannot be merged.`);
+        if (pr.data.mergeable === false) {
+          return text(`#${number} has conflicts with the base branch and cannot be merged as it stands.`);
+        }
+
+        const res = await gh.pulls.merge({
+          ...repoRef,
+          pull_number: number,
+          merge_method: method ?? 'squash',
+        });
+        return text(`Merged #${number} (${res.data.sha.slice(0, 7)}): ${pr.data.title}\n${pr.data.html_url}`);
+      } catch (err: any) {
+        if (err?.status === 404) return text(`Pull request #${number} does not exist.`);
+        if (err?.status === 405) return text(`GitHub refused to merge #${number}: ${err.message}`);
+        throw err;
+      }
+    },
+  );
+
+  const closeIssue = tool(
+    'close_issue',
+    'Close an issue once the work is delivered. Requires human approval before it runs.',
+    {
+      number: z.number().int().positive().describe('The issue number, e.g. 6.'),
+      comment: z.string().optional().describe('A closing note, e.g. which pull request delivered it.'),
+    },
+    async ({ number, comment }) => {
+      const gh = octokit();
+      if (!gh) return text('No GitHub token configured, so nothing can be closed.');
+
+      const decision = await requestApproval({
+        missionId: ctx.missionId,
+        actor: ctx.actor,
+        toolName: 'mcp__github__close_issue',
+        summary: `Close issue #${number}`,
+        input: { number, comment },
+      });
+      if (!decision.approved) {
+        return text(`Closing #${number} was rejected${decision.reason ? `: ${decision.reason}` : ''}.`);
+      }
+
+      try {
+        if (comment?.trim()) {
+          await gh.issues.createComment({ ...repoRef, issue_number: number, body: comment });
+        }
+        const res = await gh.issues.update({ ...repoRef, issue_number: number, state: 'closed' });
+        return text(`Closed #${number}: ${res.data.title}\n${res.data.html_url}`);
+      } catch (err: any) {
+        if (err?.status === 404) return text(`Issue #${number} does not exist.`);
+        throw err;
+      }
+    },
+  );
+
   const openPullRequest = tool(
     'open_pull_request',
     'Open a pull request containing everything the fleet wrote into the mission workspace. This is the human go/no-go gate - it requires approval before it runs.',
@@ -346,6 +434,9 @@ export function createGithubServer(ctx: GithubToolContext) {
     name: 'github',
     version: '1.0.0',
     instructions: `GitHub integration for ${repoRef.owner}/${repoRef.repo}: issues as the ticketing system, and pull requests as the human review gate.`,
-    tools: [getRepoContext, listIssues, getIssue, createIssue, commentIssue, openPullRequest],
+    tools: [
+      getRepoContext, listIssues, getIssue, createIssue, commentIssue,
+      openPullRequest, mergePullRequest, closeIssue,
+    ],
   });
 }
