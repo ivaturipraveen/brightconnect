@@ -383,7 +383,12 @@ export const alerts = {
     await driver.run(
       `INSERT INTO alerts (id, severity, service, title, description, resource, metric, value, threshold, status, fired_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status`,
+       ON CONFLICT (id) DO UPDATE SET
+         severity = EXCLUDED.severity, service = EXCLUDED.service,
+         title = EXCLUDED.title, description = EXCLUDED.description,
+         resource = EXCLUDED.resource, metric = EXCLUDED.metric,
+         value = EXCLUDED.value, threshold = EXCLUDED.threshold,
+         status = EXCLUDED.status, fired_at = EXCLUDED.fired_at`,
       [a.id, a.severity, a.service, a.title, a.description, a.resource,
        a.metric ?? null, a.value ?? null, a.threshold ?? null, a.status, a.firedAt],
     );

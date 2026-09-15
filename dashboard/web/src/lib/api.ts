@@ -163,6 +163,45 @@ export interface Overview {
   services: { product: string; productApi: string; repo: string };
 }
 
+export interface Analytics {
+  totals: {
+    missions: number; succeeded: number; failed: number; active: number;
+    awaitingApproval: number; artifacts: number; agentRuns: number;
+    inputTokens: number; outputTokens: number; spendUsd: number;
+    avgSpendUsd: number; avgDurationMs: number; successRate: number;
+  };
+  models: { orchestrator: string; inUse: Array<{ model: string; agents: number }> };
+  byKind: Array<{ kind: string; missions: number; spendUsd: number; tokens: number }>;
+  byTrigger: Array<{ trigger: string; missions: number }>;
+  agents: Array<{
+    id: string; name: string; department: string; model: string;
+    runs: number; succeeded: number;
+  }>;
+  recent: Array<{
+    id: string; title: string; kind: string; status: string;
+    spendUsd: number; tokens: number; durationMs: number; createdAt: string;
+  }>;
+}
+
+export interface RepoPull {
+  number: number; title: string; state: string; author: string;
+  branch?: string; base?: string; url: string; createdAt: string; draft: boolean;
+}
+export interface RepoCommit {
+  sha: string; message: string; author: string; date: string; url: string;
+}
+export interface DiffFile {
+  filename: string; status: string; additions: number; deletions: number; patch: string | null;
+}
+export interface PullDetail extends RepoPull {
+  body: string | null; additions: number; deletions: number; files: DiffFile[];
+}
+export interface CommitDetail {
+  sha: string; message: string; author: string; date: string; url: string;
+  stats?: { additions?: number; deletions?: number; total?: number };
+  files: DiffFile[];
+}
+
 export interface AgentFile {
   id: string;
   content: string;
@@ -223,6 +262,12 @@ export const api = {
   artifacts: () => req<Artifact[]>('/artifacts'),
 
   overview: () => req<Overview>('/overview'),
+  analytics: () => req<Analytics>('/analytics'),
+
+  pulls: () => req<{ configured: boolean; pulls: RepoPull[] }>('/repo/pulls'),
+  pull: (n: number) => req<PullDetail>(`/repo/pulls/${n}`),
+  commits: () => req<{ configured: boolean; commits: RepoCommit[] }>('/repo/commits'),
+  commit: (sha: string) => req<CommitDetail>(`/repo/commits/${sha}`),
   inboundEvents: () => req<InboundEvent[]>('/events/inbound'),
   pollNow: () => req<{ checked: number; dispatched: number }>('/events/poll', { method: 'POST' }),
 

@@ -14,6 +14,7 @@ import { pipeline } from 'node:stream/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
+import { Octokit } from '@octokit/rest';
 import { config, hasAnthropicKey, hasGithubToken } from './config.ts';
 import { loadFleet, readAgentFile, validateAgentFile, writeAgentFile } from './agents/fleet.ts';
 import { fleetSummary } from './orchestrator/prompts.ts';
@@ -136,6 +137,195 @@ app.get('/api/overview', async () => {
       productApi: '/app/api/health',
       repo: `https://github.com/${config.github.owner}/${config.github.repo}`,
     },
+  };
+});
+
+/**
+ * Analytics: what the fleet has done, what it consumed, and what it cost.
+ *
+ * Aggregated from the mission record rather than a separate metrics store -
+ * the cost figures are the ones the SDK reported for each run, so the totals
+ * here and the number on a mission always agree.
+ */
+app.get('/api/analytics', async () => {
+  const [all, runs, arts, appr] = await Promise.all([
+    missions.list(500),
+    agentRuns.stats(),
+    artifacts.listAll(500),
+    approvals.listPending(),
+  ]);
+
+  const finished = all.filter((m) => ['succeeded', 'failed', 'cancelled'].includes(m.status));
+  const succeeded = all.filter((m) => m.status === 'succeeded');
+  const inTok = all.reduce((n, m) => n + m.inputTokens, 0);
+  const outTok = all.reduce((n, m) => n + m.outputTokens, 0);
+  const spend = all.reduce((n, m) => n + m.costUsd, 0);
+
+  const byKind: Record<string, { missions: number; spendUsd: number; tokens: number }> = {};
+  for (const m of all) {
+    const k = (byKind[m.kind] ??= { missions: 0, spendUsd: 0, tokens: 0 });
+    k.missions++;
+    k.spendUsd += m.costUsd;
+    k.tokens += m.inputTokens + m.outputTokens;
+  }
+
+  const byTrigger: Record<string, number> = {};
+  for (const m of all) byTrigger[m.trigger] = (byTrigger[m.trigger] ?? 0) + 1;
+
+  // Which models are actually in use, and on how many agents.
+  const fleet = loadFleet();
+  const byModel: Record<string, number> = {};
+  for (const m of fleet) byModel[m.model] = (byModel[m.model] ?? 0) + 1;
+  byModel[config.anthropic.orchestratorModel] = (byModel[config.anthropic.orchestratorModel] ?? 0) + 1;
+
+  const runsBy = new Map(runs.map((r) => [r.agentType, r]));
+
+  return {
+    totals: {
+      missions: all.length,
+      succeeded: succeeded.length,
+      failed: all.filter((m) => m.status === 'failed').length,
+      active: all.filter((m) => ['queued', 'running', 'awaiting_approval'].includes(m.status)).length,
+      awaitingApproval: appr.length,
+      artifacts: arts.length,
+      agentRuns: runs.reduce((n, r) => n + r.runs, 0),
+      inputTokens: inTok,
+      outputTokens: outTok,
+      spendUsd: Number(spend.toFixed(4)),
+      avgSpendUsd: finished.length ? Number((spend / finished.length).toFixed(4)) : 0,
+      avgDurationMs: finished.length
+        ? Math.round(finished.reduce((n, m) => n + m.durationMs, 0) / finished.length)
+        : 0,
+      successRate: finished.length ? Math.round((succeeded.length / finished.length) * 100) : 0,
+    },
+    models: {
+      orchestrator: config.anthropic.orchestratorModel,
+      inUse: Object.entries(byModel).map(([model, agents]) => ({ model, agents })),
+    },
+    byKind: Object.entries(byKind).map(([kind, v]) => ({
+      kind, ...v, spendUsd: Number(v.spendUsd.toFixed(4)),
+    })),
+    byTrigger: Object.entries(byTrigger).map(([trigger, missions]) => ({ trigger, missions })),
+    agents: fleet.map((m) => ({
+      id: m.id,
+      name: m.name,
+      department: m.department,
+      model: m.model,
+      runs: runsBy.get(m.id)?.runs ?? 0,
+      succeeded: runsBy.get(m.id)?.succeeded ?? 0,
+    })).sort((a, b) => b.runs - a.runs),
+    recent: all.slice(0, 12).map((m) => ({
+      id: m.id,
+      title: m.title,
+      kind: m.kind,
+      status: m.status,
+      spendUsd: m.costUsd,
+      tokens: m.inputTokens + m.outputTokens,
+      durationMs: m.durationMs,
+      createdAt: m.createdAt,
+    })),
+  };
+});
+
+/* ------------------------------------------------------------ repository */
+
+/**
+ * The repository the fleet works in: what it has opened, and what has landed.
+ *
+ * Proxied through the server rather than called from the browser so the token
+ * never reaches the client, and so this still answers something sensible when
+ * no token is configured at all.
+ */
+const gh = () => (hasGithubToken() ? new Octokit({ auth: config.github.token }) : null);
+const repoRef = { owner: config.github.owner, repo: config.github.repo };
+
+app.get('/api/repo/pulls', async (req) => {
+  const client = gh();
+  if (!client) return { configured: false, pulls: [] };
+  const { state } = req.query as { state?: 'open' | 'closed' | 'all' };
+  const res = await client.pulls.list({ ...repoRef, state: state ?? 'all', per_page: 30, sort: 'created', direction: 'desc' });
+  return {
+    configured: true,
+    pulls: res.data.map((p) => ({
+      number: p.number,
+      title: p.title,
+      state: p.merged_at ? 'merged' : p.state,
+      author: p.user?.login ?? 'unknown',
+      branch: p.head?.ref,
+      base: p.base?.ref,
+      url: p.html_url,
+      createdAt: p.created_at,
+      draft: p.draft ?? false,
+    })),
+  };
+});
+
+app.get('/api/repo/pulls/:number', async (req, reply) => {
+  const client = gh();
+  if (!client) return reply.code(503).send({ error: 'No GitHub token configured' });
+  const number = Number((req.params as { number: string }).number);
+  const [pr, files] = await Promise.all([
+    client.pulls.get({ ...repoRef, pull_number: number }),
+    client.pulls.listFiles({ ...repoRef, pull_number: number, per_page: 60 }),
+  ]);
+  return {
+    number: pr.data.number,
+    title: pr.data.title,
+    body: pr.data.body,
+    state: pr.data.merged_at ? 'merged' : pr.data.state,
+    author: pr.data.user?.login ?? 'unknown',
+    branch: pr.data.head?.ref,
+    base: pr.data.base?.ref,
+    url: pr.data.html_url,
+    createdAt: pr.data.created_at,
+    additions: pr.data.additions,
+    deletions: pr.data.deletions,
+    files: files.data.map((f) => ({
+      filename: f.filename,
+      status: f.status,
+      additions: f.additions,
+      deletions: f.deletions,
+      patch: f.patch ?? null,
+    })),
+  };
+});
+
+app.get('/api/repo/commits', async () => {
+  const client = gh();
+  if (!client) return { configured: false, commits: [] };
+  const res = await client.repos.listCommits({ ...repoRef, per_page: 40 });
+  return {
+    configured: true,
+    commits: res.data.map((c) => ({
+      sha: c.sha,
+      message: c.commit.message.split('\n')[0],
+      author: c.commit.author?.name ?? c.author?.login ?? 'unknown',
+      date: c.commit.author?.date ?? '',
+      url: c.html_url,
+    })),
+  };
+});
+
+app.get('/api/repo/commits/:sha', async (req, reply) => {
+  const client = gh();
+  if (!client) return reply.code(503).send({ error: 'No GitHub token configured' });
+  const { sha } = req.params as { sha: string };
+  if (!/^[0-9a-f]{7,40}$/i.test(sha)) return reply.code(400).send({ error: 'Invalid commit sha' });
+  const c = await client.repos.getCommit({ ...repoRef, ref: sha });
+  return {
+    sha: c.data.sha,
+    message: c.data.commit.message,
+    author: c.data.commit.author?.name ?? 'unknown',
+    date: c.data.commit.author?.date ?? '',
+    url: c.data.html_url,
+    stats: c.data.stats,
+    files: (c.data.files ?? []).map((f) => ({
+      filename: f.filename,
+      status: f.status,
+      additions: f.additions,
+      deletions: f.deletions,
+      patch: f.patch ?? null,
+    })),
   };
 });
 

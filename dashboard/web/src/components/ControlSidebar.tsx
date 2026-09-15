@@ -20,22 +20,25 @@ export default function ControlSidebar({ overview }: { overview: Overview | null
 
   return (
     <aside className="flex h-full flex-col gap-4 overflow-y-auto">
-      <section className="rounded-lg border border-ink-700 bg-ink-900/80">
-        <h2 className="border-b border-ink-700 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-ink-400">
+      <section className="rounded-xl border border-ink-700 bg-ink-900 p-3">
+        <h2 className="mb-2.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-400">
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M3 12h4l3-8 4 16 3-8h4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
           Session
         </h2>
-        <div className="grid grid-cols-3 divide-x divide-ink-800">
+        <div className="grid grid-cols-3 gap-2">
           <Stat label="working" value={s?.agentsWorking ?? 0} highlight={(s?.agentsWorking ?? 0) > 0} />
           <Stat label="missions" value={s?.totalMissions ?? 0} />
           <Stat label="artifacts" value={s?.artifacts ?? 0} />
         </div>
-        <div className="grid grid-cols-2 divide-x divide-ink-800 border-t border-ink-800">
+        <div className="mt-2 grid grid-cols-2 gap-2">
           <Stat label="awaiting you" value={s?.pendingApprovals ?? 0} highlight={(s?.pendingApprovals ?? 0) > 0} warn />
           <Stat label="spend" value={`$${(s?.spendUsd ?? 0).toFixed(2)}`} />
         </div>
       </section>
 
-      <section className="rounded-lg border border-think-400/40 bg-think-400/[0.06]">
+      <section className="rounded-xl border border-think-400/40 bg-think-400/[0.07]">
         <h2 className="border-b border-think-400/25 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-think-400">
           Orchestrator
         </h2>
@@ -66,7 +69,7 @@ export default function ControlSidebar({ overview }: { overview: Overview | null
         </div>
       </section>
 
-      <section className="rounded-lg border border-ink-700 bg-ink-900/80">
+      <section className="rounded-xl border border-ink-700 bg-ink-900">
         <h2 className="flex items-center gap-2 border-b border-ink-700 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-ink-400">
           Specialists
           <span className="ml-auto font-mono text-[10px] normal-case tracking-normal text-ink-500">
@@ -89,26 +92,25 @@ export default function ControlSidebar({ overview }: { overview: Overview | null
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <span className="truncate text-[12px] font-medium text-ink-100">{m.name}</span>
-                        {m.status === 'working' ? (
-                          m.missionId ? (
-                            <Link
-                              to={`/missions/${m.missionId}`}
-                              className="rounded bg-signal-500/20 px-1 py-px text-[9px] font-medium text-signal-300 hover:bg-signal-500/30"
-                            >
+                        <span className="ml-auto flex shrink-0 items-center gap-1 text-[9px] uppercase tracking-wide">
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              m.status === 'working' ? 'bg-signal-400' : 'bg-ink-600'
+                            }`}
+                          />
+                          {m.status === 'working' && m.missionId ? (
+                            <Link to={`/missions/${m.missionId}`} className="text-signal-300 hover:underline">
                               working
                             </Link>
                           ) : (
-                            <span className="rounded bg-signal-500/20 px-1 py-px text-[9px] text-signal-300">working</span>
-                          )
-                        ) : (
-                          <span className="text-[9px] text-ink-600">idle</span>
-                        )}
+                            <span className={m.status === 'working' ? 'text-signal-300' : 'text-ink-500'}>
+                              {m.status}
+                            </span>
+                          )}
+                        </span>
                       </div>
                       <div className="truncate text-[10px] leading-tight text-ink-500">{m.role}</div>
                     </div>
-                    {m.runs > 0 && (
-                      <span className="shrink-0 font-mono text-[10px] text-ink-600">{m.runs}</span>
-                    )}
                   </li>
                 ))}
               </ul>
@@ -117,7 +119,7 @@ export default function ControlSidebar({ overview }: { overview: Overview | null
         })}
       </section>
 
-      <section className="rounded-lg border border-ink-700 bg-ink-900/80">
+      <section className="rounded-xl border border-ink-700 bg-ink-900">
         <h2 className="border-b border-ink-700 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-ink-400">
           Services
         </h2>
@@ -134,16 +136,21 @@ export default function ControlSidebar({ overview }: { overview: Overview | null
 function Stat({
   label, value, highlight, warn,
 }: { label: string; value: number | string; highlight?: boolean; warn?: boolean }) {
+  const lit = highlight && warn;
   return (
-    <div className="px-3 py-2.5 text-center">
+    <div
+      className={`rounded-lg border px-2.5 py-2.5 ${
+        lit ? 'border-warn-500/40 bg-warn-500/[0.07]' : 'border-ink-700 bg-ink-850'
+      }`}
+    >
       <div
-        className={`font-mono text-lg font-semibold tabular-nums ${
-          highlight ? (warn ? 'text-warn-400' : 'text-signal-400') : 'text-ink-100'
+        className={`font-mono text-[19px] font-semibold leading-none tabular-nums ${
+          lit ? 'text-warn-400' : highlight ? 'text-signal-400' : 'text-ink-100'
         }`}
       >
         {value}
       </div>
-      <div className="mt-0.5 text-[10px] uppercase tracking-wide text-ink-500">{label}</div>
+      <div className="mt-1.5 text-[9px] uppercase tracking-wider text-ink-500">{label}</div>
     </div>
   );
 }

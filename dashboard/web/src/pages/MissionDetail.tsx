@@ -5,9 +5,10 @@ import {
 } from '../lib/api.ts';
 import { useActivityStream } from '../lib/stream.ts';
 import {
-  Badge, Button, Empty, Metric, Panel, StatusDot, fmtCost, fmtDuration, relTime, type Tone,
+  Badge, Button, Empty, Panel, StatusDot, fmtCost, fmtDuration, relTime, type Tone,
 } from '../components/ui.tsx';
 import MissionFlow from '../components/MissionFlow.tsx';
+import MissionGraph from '../components/MissionGraph.tsx';
 
 const EVENT_STYLE: Record<string, { tone: Tone; label: string }> = {
   'mission.created': { tone: 'neutral', label: 'mission' },
@@ -34,7 +35,7 @@ export default function MissionDetail() {
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [showReasoning, setShowReasoning] = useState(false);
   // Flow first: the delegation shape is what people want to see during a run.
-  const [view, setView] = useState<'flow' | 'activity'>('flow');
+  const [view, setView] = useState<'flow' | 'graph' | 'activity'>('flow');
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -73,8 +74,8 @@ export default function MissionDetail() {
   const isLive = ['running', 'queued', 'awaiting_approval'].includes(mission.status);
 
   return (
-    <div className="space-y-4">
-      <header className="flex flex-wrap items-start justify-between gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <header className="flex shrink-0 flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <Link to="/missions" className="text-[12px] text-ink-400 hover:text-signal-300">
             ← Mission Control
@@ -111,27 +112,29 @@ export default function MissionDetail() {
         )}
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <Metric label="Agents engaged" value={agents.length} hint={`${agents.filter((a) => a.status === 'running').length} working now`} />
-        <Metric label="Turns" value={mission.numTurns || '—'} />
-        <Metric label="Duration" value={fmtDuration(mission.durationMs)} />
-        <Metric label="Tokens" value={((mission.inputTokens + mission.outputTokens) / 1000).toFixed(1) + 'k'} hint="in + out, incl. subagents" />
-        <Metric label="Cost" value={fmtCost(mission.costUsd)} hint="estimated, this mission" />
+      {/* One slim strip: five boxed metrics ate a third of the screen that the
+          flow and graph needed more. */}
+      <div className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-1.5 rounded-lg border border-ink-700 bg-ink-900 px-3.5 py-2 text-[12px]">
+        <Stat label="agents" value={agents.length} extra={`${agents.filter((a) => a.status === 'running').length} working`} />
+        <Stat label="turns" value={mission.numTurns || '—'} />
+        <Stat label="duration" value={fmtDuration(mission.durationMs)} />
+        <Stat label="tokens" value={`${((mission.inputTokens + mission.outputTokens) / 1000).toFixed(1)}k`} />
+        <Stat label="cost" value={fmtCost(mission.costUsd)} />
       </div>
 
       {pending.length > 0 && (
-        <div className="space-y-2">
+        <div className="shrink-0 space-y-2">
           {pending.map((a) => (
             <ApprovalCard key={a.id} approval={a} onDecided={load} />
           ))}
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <Panel
           title={
             <div className="flex items-center gap-1">
-              {(['flow', 'activity'] as const).map((v) => (
+              {(['flow', 'graph', 'activity'] as const).map((v) => (
                 <button
                   key={v}
                   onClick={() => setView(v)}
@@ -157,24 +160,36 @@ export default function MissionDetail() {
                 show reasoning
               </label>
             ) : (
-              <span className="text-[11px] text-ink-500">click an agent to see its report</span>
+              <span className="text-[11px] text-ink-500">
+                {view === 'graph' ? 'click any node for its brief and its output' : 'click a step to see that stage'}
+              </span>
             )
           }
         >
-          {view === 'flow' ? (
+          {view === 'flow' && (
             <MissionFlow
               agents={agents}
               events={events}
               missionKind={mission.kind}
               missionStatus={mission.status}
               missionInput={mission.input}
+              missionSummary={mission.summary}
             />
-          ) : (
-            <ActivityFeed events={visibleEvents} live={isLive} />
           )}
+          {view === 'graph' && (
+            <MissionGraph
+              agents={agents}
+              events={events}
+              missionKind={mission.kind}
+              missionStatus={mission.status}
+              missionInput={mission.input}
+              missionSummary={mission.summary}
+            />
+          )}
+          {view === 'activity' && <ActivityFeed events={visibleEvents} live={isLive} />}
         </Panel>
 
-        <div className="space-y-4">
+        <div className="flex min-h-0 flex-col gap-4 overflow-y-auto">
           <Panel title={`Fleet (${agents.length})`} dense>
             {agents.length === 0 ? (
               <div className="p-4"><Empty>No specialists engaged yet.</Empty></div>
@@ -202,43 +217,30 @@ export default function MissionDetail() {
             )}
           </Panel>
 
-          <Panel title={`Artifacts (${artifacts.length})`} dense>
-            {artifacts.length === 0 ? (
-              <div className="p-4"><Empty>Nothing produced yet.</Empty></div>
-            ) : (
+          {artifacts.length > 0 && (
+            <Panel title={`Produced (${artifacts.length})`} dense>
               <ul className="divide-y divide-ink-800">
                 {artifacts.map((a) => (
                   <li key={a.id} className="px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <Badge tone={a.kind === 'pull_request' ? 'ok' : 'info'}>
-                        {a.kind.replace('_', ' ')}
-                      </Badge>
-                    </div>
-                    <div className="mt-1 text-[13px] text-ink-100">{a.title}</div>
-                    {a.url ? (
-                      <a
-                        href={a.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-0.5 block truncate text-[11px] text-signal-300 hover:underline"
-                      >
+                    <Badge tone={a.kind === 'pull_request' ? 'ok' : 'info'}>
+                      {a.kind.replace('_', ' ')}
+                    </Badge>
+                    <div className="mt-1 text-[12px] text-ink-100">{a.title}</div>
+                    {a.url && (
+                      <a href={a.url} target="_blank" rel="noreferrer" className="block truncate text-[11px] text-signal-300 hover:underline">
                         {a.url}
                       </a>
-                    ) : (
-                      <div className="mt-0.5 text-[11px] text-ink-500">
-                        recorded locally — no GitHub token
-                      </div>
                     )}
                   </li>
                 ))}
               </ul>
-            )}
-          </Panel>
+            </Panel>
+          )}
         </div>
       </div>
 
       {mission.summary && (
-        <Panel title="Mission outcome">
+        <Panel title="Mission outcome" className="shrink-0">
           <pre className="whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-ink-200">
             {mission.summary}
           </pre>
@@ -263,6 +265,43 @@ export default function MissionDetail() {
   );
 }
 
+/**
+ * Consecutive events of the same kind from the same actor collapse into one
+ * row. A specialist making twenty telemetry queries is one thing that happened,
+ * not twenty - and listing them individually buries the messages that matter
+ * between them.
+ */
+interface Group {
+  key: string;
+  type: string;
+  actor: string;
+  items: MissionEvent[];
+}
+
+function groupEvents(events: MissionEvent[]): Group[] {
+  const COLLAPSIBLE = new Set(['tool.called', 'tool.result', 'agent.thinking']);
+  const out: Group[] = [];
+  for (const e of events) {
+    const last = out[out.length - 1];
+    if (last && COLLAPSIBLE.has(e.type) && last.type === e.type && last.actor === e.actor) {
+      last.items.push(e);
+    } else {
+      out.push({ key: `${e.id}`, type: e.type, actor: e.actor, items: [e] });
+    }
+  }
+  return out;
+}
+
+function Stat({ label, value, extra }: { label: string; value: string | number; extra?: string }) {
+  return (
+    <span className="flex items-baseline gap-1.5">
+      <span className="text-[10px] uppercase tracking-wide text-ink-500">{label}</span>
+      <span className="font-mono font-semibold tabular-nums text-ink-100">{value}</span>
+      {extra && <span className="text-[10px] text-ink-500">{extra}</span>}
+    </span>
+  );
+}
+
 function ActivityFeed({ events, live }: { events: MissionEvent[]; live: boolean }) {
   const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -280,43 +319,22 @@ function ActivityFeed({ events, live }: { events: MissionEvent[]; live: boolean 
     setPinned(el.scrollHeight - el.scrollTop - el.clientHeight < 80);
   };
 
+  const groups = groupEvents(events);
+
   if (events.length === 0) {
     return <div className="p-4"><Empty>Waiting for the orchestrator…</Empty></div>;
   }
 
   return (
-    <div className="relative">
+    <div className="relative min-h-0 flex-1">
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="max-h-[62vh] divide-y divide-ink-800 overflow-y-auto"
+        className="h-full divide-y divide-ink-800 overflow-y-auto"
       >
-        {events.map((e) => {
-          const style = EVENT_STYLE[e.type] ?? { tone: 'neutral' as Tone, label: e.type };
-          const isNarrative = e.type === 'agent.message' || e.type === 'mission.finished';
-          return (
-            <div key={e.id} className="slide-in px-3 py-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge tone={style.tone}>{style.label}</Badge>
-                <span className="font-mono text-[11px] text-ink-300">{e.actor}</span>
-                <span className="ml-auto text-[11px] text-ink-500">{relTime(e.createdAt)}</span>
-              </div>
-              {e.text && (
-                <div
-                  className={
-                    isNarrative
-                      ? 'mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-ink-200'
-                      : e.type === 'agent.thinking'
-                        ? 'mt-1 line-clamp-6 whitespace-pre-wrap border-l-2 border-think-400/40 pl-2 text-[12px] italic leading-snug text-ink-400'
-                        : 'mt-1 line-clamp-3 whitespace-pre-wrap font-mono text-[12px] leading-snug text-ink-300'
-                  }
-                >
-                  {e.text}
-                </div>
-              )}
-            </div>
-          );
-        })}
+        {groups.map((g) => (
+          <EventGroup key={g.key} group={g} />
+        ))}
         <div ref={endRef} />
       </div>
 
@@ -328,6 +346,69 @@ function ActivityFeed({ events, live }: { events: MissionEvent[]; live: boolean 
           ↓ jump to latest
         </button>
       )}
+    </div>
+  );
+}
+
+function EventGroup({ group }: { group: Group }) {
+  const [open, setOpen] = useState(false);
+  const style = EVENT_STYLE[group.type] ?? { tone: 'neutral' as Tone, label: group.type };
+  const collapsed = group.items.length > 1 && !open;
+
+  if (collapsed) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="slide-in flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-ink-850"
+      >
+        <Badge tone={style.tone}>{style.label}</Badge>
+        <span className="font-mono text-[11px] text-ink-300">{group.actor}</span>
+        <span className="text-[11px] text-ink-400">
+          {group.items.length} in a row
+        </span>
+        <span className="ml-auto text-[11px] text-ink-500">
+          {relTime(group.items[group.items.length - 1].createdAt)}
+        </span>
+        <span className="text-[10px] text-signal-300">expand</span>
+      </button>
+    );
+  }
+
+  return (
+    <div className="slide-in">
+      {group.items.length > 1 && (
+        <button
+          onClick={() => setOpen(false)}
+          className="flex w-full items-center gap-2 px-3 pt-1.5 text-left text-[10px] text-signal-300 hover:underline"
+        >
+          collapse {group.items.length} {style.label} events
+        </button>
+      )}
+      {group.items.map((e) => {
+        const narrative = e.type === 'agent.message' || e.type === 'mission.finished';
+        return (
+          <div key={e.id} className="px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={style.tone}>{style.label}</Badge>
+              <span className="font-mono text-[11px] text-ink-300">{e.actor}</span>
+              <span className="ml-auto text-[11px] text-ink-500">{relTime(e.createdAt)}</span>
+            </div>
+            {e.text && (
+              <div
+                className={
+                  narrative
+                    ? 'mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-ink-200'
+                    : e.type === 'agent.thinking'
+                      ? 'mt-1 line-clamp-6 whitespace-pre-wrap border-l-2 border-think-400/40 pl-2 text-[12px] italic leading-snug text-ink-400'
+                      : 'mt-1 line-clamp-3 whitespace-pre-wrap font-mono text-[12px] leading-snug text-ink-300'
+                }
+              >
+                {e.text}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

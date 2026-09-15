@@ -1,29 +1,29 @@
 @import "tailwindcss";
 
 /*
-  Light control-panel palette.
-
-  The token names run ink-950 (page) through ink-100 (primary text), and every
-  component is written against those names rather than against colours. So the
-  whole surface changes here, in one place, and nothing else has to move - which
-  is the reason for having tokens at all.
+  Two themes, one set of names.
+  
+  Every component is written against ink-950 (furthest back) through ink-100
+  (primary text) rather than against colours, so a theme is just a different
+  set of values for the same eleven tokens. Light is the default; dark applies
+  when the root carries data-theme="dark".
 */
 @theme {
-  --color-ink-950: #f7f8fa;   /* page */
-  --color-ink-900: #ffffff;   /* panels */
-  --color-ink-850: #f4f6f9;   /* sunken: inputs, table stripes */
-  --color-ink-800: #eceff4;   /* hover */
-  --color-ink-700: #dfe3ea;   /* borders */
-  --color-ink-600: #cbd2dc;   /* stronger borders, control outlines */
-  --color-ink-500: #7e8899;   /* faint text - 3.37:1 on the page background */
-  --color-ink-400: #667085;   /* muted text */
-  --color-ink-300: #475467;   /* secondary text */
-  --color-ink-200: #344054;   /* strong text */
-  --color-ink-100: #101828;   /* primary text */
+  --color-ink-950: #f6f7f9;
+  --color-ink-900: #ffffff;
+  --color-ink-850: #f3f5f8;
+  --color-ink-800: #eaedf2;
+  --color-ink-700: #dee2e9;
+  --color-ink-600: #c9cfd9;
+  --color-ink-500: #7e8899;
+  --color-ink-400: #667085;
+  --color-ink-300: #475467;
+  --color-ink-200: #344054;
+  --color-ink-100: #101828;
 
-  --color-signal-500: #2563eb;
-  --color-signal-400: #3b82f6;
-  --color-signal-300: #1d4ed8;   /* links: darker, for contrast on white */
+  --color-signal-500: #4f46e5;
+  --color-signal-400: #6366f1;
+  --color-signal-300: #4338ca;
 
   --color-ok-500: #059669;
   --color-ok-400: #047857;
@@ -36,6 +36,36 @@
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, monospace;
 }
 
+/*
+  Dark. Not the light values inverted - a dark surface needs its own steps or
+  the mid greys collapse into each other and every border disappears.
+*/
+[data-theme="dark"] {
+  --color-ink-950: #0a0b10;
+  --color-ink-900: #121420;
+  --color-ink-850: #171a28;
+  --color-ink-800: #1d2131;
+  --color-ink-700: #272c3d;
+  --color-ink-600: #343a4d;
+  --color-ink-500: #6b7489;
+  --color-ink-400: #8b94a8;
+  --color-ink-300: #aab2c4;
+  --color-ink-200: #ccd2de;
+  --color-ink-100: #f0f2f7;
+
+  --color-signal-500: #6366f1;
+  --color-signal-400: #818cf8;
+  --color-signal-300: #a5b4fc;
+
+  --color-ok-500: #10b981;
+  --color-ok-400: #34d399;
+  --color-warn-500: #f59e0b;
+  --color-warn-400: #fbbf24;
+  --color-crit-500: #ef4444;
+  --color-crit-400: #f87171;
+  --color-think-400: #a78bfa;
+}
+
 html, body, #root { height: 100%; }
 
 body {
@@ -45,16 +75,18 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Thin scrollbars so dense panels keep their horizontal space. */
+/* Theme changes should not animate every surface at once. */
+body, [data-theme] { transition: background-color 0.15s ease; }
+
 * { scrollbar-width: thin; scrollbar-color: var(--color-ink-600) transparent; }
 *::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-thumb { background: var(--color-ink-600); border-radius: 4px; }
 *::-webkit-scrollbar-track { background: transparent; }
 
 @keyframes pulse-ring {
-  0%   { box-shadow: 0 0 0 0 rgb(37 99 235 / 0.35); }
-  70%  { box-shadow: 0 0 0 6px rgb(37 99 235 / 0); }
-  100% { box-shadow: 0 0 0 0 rgb(37 99 235 / 0); }
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-signal-500) 45%, transparent); }
+  70%  { box-shadow: 0 0 0 6px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
 }
 .pulse-ring { animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
 
@@ -66,4 +98,5 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .pulse-ring, .slide-in { animation: none; }
+  body, [data-theme] { transition: none; }
 }

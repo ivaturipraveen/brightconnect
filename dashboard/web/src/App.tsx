@@ -2,7 +2,10 @@ import { useEffect, useState } from 'react';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { api, type AppConfig, type Approval } from './lib/api.ts';
 import { useActivityStream } from './lib/stream.ts';
+import { useTheme } from './lib/theme.ts';
 import { Badge } from './components/ui.tsx';
+import Analytics from './pages/Analytics.tsx';
+import Repository from './pages/Repository.tsx';
 import Console from './pages/Console.tsx';
 import MissionControl from './pages/MissionControl.tsx';
 import MissionDetail from './pages/MissionDetail.tsx';
@@ -14,9 +17,12 @@ const NAV = [
   { to: '/missions', label: 'Mission Control' },
   { to: '/incidents', label: 'Incidents' },
   { to: '/fleet', label: 'Agent Fleet' },
+  { to: '/repository', label: 'Repository' },
+  { to: '/analytics', label: 'Analytics' },
 ];
 
 export default function App() {
+  const [theme, setTheme] = useTheme();
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [pending, setPending] = useState<Approval[]>([]);
 
@@ -77,11 +83,24 @@ export default function App() {
           </nav>
 
           <div className="flex items-center gap-2">
-            {config && <ReadinessPills config={config} />}
-            <Badge tone={connected ? 'ok' : 'crit'}>
-              <span className={`h-1.5 w-1.5 rounded-full ${connected ? 'bg-ok-400' : 'bg-crit-400'}`} />
-              {connected ? 'live' : 'offline'}
-            </Badge>
+            <button
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+              aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+              className="grid h-7 w-7 place-items-center rounded-md border border-ink-600 text-ink-400 transition-colors hover:bg-ink-800 hover:text-ink-200"
+            >
+              {theme === 'dark' ? (
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" strokeLinecap="round" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" strokeLinejoin="round" />
+                </svg>
+              )}
+            </button>
+            {config && <ReadinessPills config={config} connected={connected} />}
           </div>
         </div>
       </header>
@@ -96,6 +115,8 @@ export default function App() {
           <Route path="/missions/:id" element={<MissionDetail />} />
           <Route path="/incidents" element={<Incidents />} />
           <Route path="/fleet" element={<Fleet />} />
+          <Route path="/repository" element={<Repository />} />
+          <Route path="/analytics" element={<Analytics />} />
           <Route path="*" element={<Navigate to="/console" replace />} />
         </Routes>
       </main>
@@ -114,16 +135,25 @@ function Logo() {
   );
 }
 
-function ReadinessPills({ config }: { config: AppConfig }) {
+/**
+ * One status, not three. "agents ready" and "live" were the same fact stated
+ * twice, and the repository is already linked in the sidebar under Services.
+ */
+function ReadinessPills({ config, connected }: { config: AppConfig; connected: boolean }) {
+  const ready = config.readiness.anthropic && connected;
+  const label = !config.readiness.anthropic
+    ? 'no API key'
+    : !connected
+      ? 'reconnecting'
+      : config.readiness.github
+        ? 'ready'
+        : 'ready · github local';
+
   return (
-    <div className="hidden items-center gap-1.5 lg:flex">
-      <Badge tone={config.readiness.anthropic ? 'ok' : 'crit'}>
-        {config.readiness.anthropic ? 'agents ready' : 'no API key'}
-      </Badge>
-      <Badge tone={config.readiness.github ? 'ok' : 'warn'}>
-        {config.readiness.github ? config.repo : 'github: local mode'}
-      </Badge>
-    </div>
+    <Badge tone={ready ? 'ok' : config.readiness.anthropic ? 'warn' : 'crit'}>
+      <span className={`h-1.5 w-1.5 rounded-full ${ready ? 'bg-ok-400' : 'bg-warn-400'}`} />
+      {label}
+    </Badge>
   );
 }
 

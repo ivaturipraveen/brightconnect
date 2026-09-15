@@ -1,24 +1,27 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { AgentRun, MissionEvent, MissionKind } from '../lib/api.ts';
-import { Badge, StatusDot, fmtDuration } from './ui.tsx';
+import { fmtDuration } from './ui.tsx';
 
 /**
- * How the work actually moved: the request arrives, the orchestrator decides
- * what it is and who should do it, specialists run, each reports back.
+ * The execution view.
  *
- * Agents engaged within a few seconds of each other are drawn as one row,
- * because concurrent and sequential work look identical in a list and the
- * difference is the whole point.
+ * A step chain across the top, and the detail for whichever step you pick
+ * below it. Everything at once is unreadable on a real mission - by the time
+ * three specialists have reported, the request that started it is a screen and
+ * a half away - so the chain stays fixed and only the panel underneath changes.
  */
 
 const WAVE_WINDOW_MS = 4000;
 
-const INTAKE: Record<MissionKind, { title: string; from: string }> = {
-  incident: { title: 'Alert received', from: 'from monitoring' },
-  sdlc: { title: 'Task received', from: 'from the console' },
-  ticket: { title: 'Ticket received', from: 'from GitHub Issues' },
-  review: { title: 'Pull request opened', from: 'from GitHub' },
+const INTAKE: Record<MissionKind, string> = {
+  incident: 'Alert received',
+  sdlc: 'Task received',
+  ticket: 'Ticket received',
+  review: 'Pull request received',
 };
+
+type StepId = 'request' | 'plan' | 'execute' | 'outcome';
+type StepState = 'done' | 'active' | 'pending';
 
 interface Props {
   agents: AgentRun[];
@@ -26,12 +29,17 @@ interface Props {
   missionKind: MissionKind;
   missionStatus: string;
   missionInput: string;
+  missionSummary?: string | null;
 }
 
 export default function MissionFlow({
-  agents, events, missionKind, missionStatus, missionInput,
+  agents, events, missionKind, missionStatus, missionInput, missionSummary,
 }: Props) {
-  const [open, setOpen] = useState<string | null>(null);
+  const done = ['succeeded', 'failed', 'cancelled'].includes(missionStatus);
+
+  const plan = events.find(
+    (e) => e.type === 'agent.message' && e.actor === 'orchestrator' && (e.text ?? '').trim(),
+  )?.text;
 
   const waves = useMemo(() => {
     const sorted = [...agents].sort(
@@ -47,177 +55,257 @@ export default function MissionFlow({
     return out;
   }, [agents]);
 
-  /** The orchestrator's own words - its plan, before it delegated anything. */
-  const plan = events.find(
-    (e) => e.type === 'agent.message' && e.actor === 'orchestrator' && (e.text ?? '').trim(),
-  )?.text;
+  const steps: Array<{ id: StepId; n: string; label: string; detail: string; state: StepState }> = [
+    { id: 'request', n: '1', label: INTAKE[missionKind], detail: 'what was asked', state: 'done' },
+    {
+      id: 'plan',
+      n: '2',
+      label: 'Plan',
+      detail: plan ? 'the approach chosen' : 'deciding…',
+      state: plan ? 'done' : 'active',
+    },
+    {
+      id: 'execute',
+      n: '3',
+      label: 'Execute',
+      detail: agents.length
+        ? `${agents.length} specialist${agents.length === 1 ? '' : 's'}`
+        : 'not started',
+      state: agents.length === 0 ? 'pending' : done ? 'done' : 'active',
+    },
+    {
+      id: 'outcome',
+      n: '4',
+      label: missionStatus === 'succeeded' ? 'Complete' : done ? 'Ended' : 'Outcome',
+      detail: done ? missionStatus.replace('_', ' ') : 'pending',
+      state: done ? 'done' : 'pending',
+    },
+  ];
 
-  const live = ['running', 'queued', 'awaiting_approval'].includes(missionStatus);
-  const toolCount = (agentType: string) =>
-    events.filter((e) => e.type === 'tool.called' && e.actor === agentType).length;
+  // Follow the work: land on whatever is happening now, until the reader picks
+  // a step themselves.
+  const liveStep: StepId = !plan ? 'plan' : done ? 'outcome' : agents.length ? 'execute' : 'plan';
+  const [picked, setPicked] = useState<StepId | null>(null);
+  const [lastLive, setLastLive] = useState(liveStep);
+  useEffect(() => {
+    if (liveStep !== lastLive) {
+      setLastLive(liveStep);
+      setPicked(null);
+    }
+  }, [liveStep, lastLive]);
+  const current = picked ?? liveStep;
 
   return (
-    <div className="space-y-0 p-4">
-      <Step index="1" title={INTAKE[missionKind].title} caption={INTAKE[missionKind].from}>
-        <p className="line-clamp-3 text-[12px] leading-relaxed text-ink-400">{missionInput}</p>
-      </Step>
-
-      <Link />
-
-      <Step
-        index="2"
-        title="Orchestrator"
-        caption={agents.length === 0 ? 'working out what this is…' : 'decided the plan and who should do it'}
-        busy={live && agents.length === 0}
-        tone="think"
-      >
-        {plan ? (
-          <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-ink-300">
-            {plan.length > 420 ? plan.slice(0, 420) + '…' : plan}
-          </p>
-        ) : (
-          <p className="text-[12px] text-ink-500">Reading the request…</p>
-        )}
-      </Step>
-
-      {waves.length === 0 ? (
-        <>
-          <Link />
-          <div className="rounded-lg border border-dashed border-ink-700 px-4 py-5 text-center text-[12px] text-ink-400">
-            No specialist engaged yet.
-          </div>
-        </>
-      ) : (
-        waves.map((wave, i) => (
-          <div key={i}>
-            <Link label={wave.length > 1 ? `${wave.length} working in parallel` : 'delegated to'} />
-            <div className={`grid gap-2 ${wave.length > 1 ? 'sm:grid-cols-2' : ''}`}>
-              {wave.map((a) => {
-                const isOpen = open === a.id;
-                const ms =
-                  new Date(a.finishedAt ?? a.startedAt).getTime() - new Date(a.startedAt).getTime();
-                return (
-                  <div
-                    key={a.id}
-                    className={`rounded-lg border bg-ink-900 ${
-                      a.status === 'running'
-                        ? 'border-signal-500/50'
-                        : a.status === 'failed'
-                          ? 'border-crit-500/40'
-                          : 'border-ink-700'
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* ---- step chain ---- */}
+      <div className="shrink-0 border-b border-ink-700 px-4 py-4">
+        <ol className="flex items-start">
+          {steps.map((s, i) => (
+            <li key={s.id} className="flex flex-1 items-start">
+              <button
+                onClick={() => setPicked(s.id)}
+                className="group flex min-w-0 flex-col items-center gap-1.5 px-1 text-center"
+                aria-current={current === s.id ? 'step' : undefined}
+              >
+                <span
+                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 text-[12px] font-semibold transition-colors ${
+                    current === s.id
+                      ? 'border-signal-500 bg-signal-500 text-white'
+                      : s.state === 'done'
+                        ? 'border-ok-500/50 bg-ok-500/15 text-ok-400 group-hover:border-ok-500'
+                        : s.state === 'active'
+                          ? 'border-signal-500/60 bg-signal-500/15 text-signal-400 pulse-ring'
+                          : 'border-ink-700 bg-ink-900 text-ink-500'
+                  }`}
+                >
+                  {s.state === 'done' && current !== s.id ? '✓' : s.n}
+                </span>
+                <span className="min-w-0">
+                  <span
+                    className={`block truncate text-[12px] font-semibold ${
+                      current === s.id ? 'text-ink-100' : s.state === 'pending' ? 'text-ink-500' : 'text-ink-200'
                     }`}
                   >
-                    <button
-                      onClick={() => setOpen(isOpen ? null : a.id)}
-                      className="flex w-full items-start gap-2 px-3 py-2.5 text-left"
-                    >
-                      <StatusDot status={a.status} />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-x-2">
-                          <span className="font-mono text-[12px] font-medium text-ink-100">
-                            {a.agentType}
-                          </span>
-                          <span className="text-[10px] text-ink-500">
-                            {a.status === 'running' ? 'working…' : fmtDuration(ms)}
-                            {toolCount(a.agentType) > 0 && ` · ${toolCount(a.agentType)} tool calls`}
-                          </span>
-                        </div>
-                        {a.task && (
-                          <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-ink-400">
-                            asked to: {a.task}
-                          </div>
-                        )}
-                      </div>
-                      <span className="mt-0.5 shrink-0 text-[10px] text-ink-500">
-                        {isOpen ? 'hide' : 'output'}
+                    {s.label}
+                  </span>
+                  <span className="block truncate text-[10px] text-ink-500">{s.detail}</span>
+                </span>
+              </button>
+              {i < steps.length - 1 && (
+                <span
+                  className={`mt-4 h-px min-w-6 flex-1 ${
+                    steps[i + 1].state === 'pending' ? 'bg-ink-700' : 'bg-ok-500/40'
+                  }`}
+                  aria-hidden
+                />
+              )}
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      {/* ---- detail for the chosen step ---- */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        {current === 'request' && (
+          <Block label="The request" tone="muted">
+            {missionInput}
+          </Block>
+        )}
+
+        {current === 'plan' && (
+          plan ? (
+            <Block label="Orchestrator · plan" tone="think">{plan}</Block>
+          ) : (
+            <Waiting>The orchestrator is reading the request.</Waiting>
+          )
+        )}
+
+        {current === 'execute' && (
+          waves.length === 0 ? (
+            <Waiting>No specialist engaged yet.</Waiting>
+          ) : (
+            <div className="space-y-5">
+              {waves.map((wave, i) => (
+                <section key={i}>
+                  {wave.length > 1 && (
+                    <div className="mb-2 flex items-center gap-2">
+                      <span className="rounded-full border border-signal-500/30 bg-signal-500/10 px-2 py-0.5 text-[10px] font-medium text-signal-400">
+                        {wave.length} in parallel
                       </span>
-                    </button>
-
-                    {isOpen && (
-                      <div className="border-t border-ink-700 px-3 py-2.5">
-                        <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-ink-500">
-                          Reported back
-                        </div>
-                        <pre className="max-h-72 overflow-auto whitespace-pre-wrap font-sans text-[12px] leading-relaxed text-ink-300">
-                          {a.result?.trim() || (a.status === 'running' ? 'Still working…' : 'Nothing returned.')}
-                        </pre>
-                      </div>
-                    )}
+                      <span className="h-px flex-1 bg-ink-700" />
+                    </div>
+                  )}
+                  <div className="space-y-3">
+                    {wave.map((a) => (
+                      <AgentThread
+                        key={a.id}
+                        run={a}
+                        toolCalls={events.filter((e) => e.type === 'tool.called' && e.actor === a.agentType).length}
+                      />
+                    ))}
                   </div>
-                );
-              })}
+                </section>
+              ))}
             </div>
-          </div>
-        ))
-      )}
+          )
+        )}
 
-      {['succeeded', 'failed', 'cancelled'].includes(missionStatus) && (
-        <>
-          <Link />
-          <Step
-            index="✓"
-            title={
-              missionStatus === 'succeeded'
-                ? 'Done'
-                : missionStatus === 'cancelled'
-                  ? 'Cancelled'
-                  : 'Failed'
-            }
-            caption={missionStatus === 'succeeded' ? 'outcome below' : undefined}
-            tone={missionStatus === 'succeeded' ? 'ok' : 'crit'}
-          />
-        </>
-      )}
-    </div>
-  );
-}
-
-function Link({ label }: { label?: string }) {
-  return (
-    <div className="flex items-center gap-2 py-1.5 pl-[13px]">
-      <div className="h-6 w-px bg-ink-600" />
-      {label && (
-        <Badge tone="info" className="ml-1">
-          {label}
-        </Badge>
-      )}
-    </div>
-  );
-}
-
-function Step({
-  index, title, caption, children, busy, tone = 'neutral',
-}: {
-  index: string;
-  title: string;
-  caption?: string;
-  children?: React.ReactNode;
-  busy?: boolean;
-  tone?: 'neutral' | 'think' | 'ok' | 'crit';
-}) {
-  const ring = {
-    neutral: 'border-ink-600 text-ink-400',
-    think: 'border-think-400/50 text-think-400',
-    ok: 'border-ok-500/50 text-ok-400',
-    crit: 'border-crit-500/50 text-crit-400',
-  }[tone];
-
-  return (
-    <div className="flex gap-2.5">
-      <span
-        className={`mt-0.5 grid h-[26px] w-[26px] shrink-0 place-items-center rounded-full border bg-ink-900 text-[11px] font-semibold ${ring} ${
-          busy ? 'pulse-ring' : ''
-        }`}
-      >
-        {index}
-      </span>
-      <div className="min-w-0 flex-1 rounded-lg border border-ink-700 bg-ink-900 px-3 py-2.5">
-        <div className="flex flex-wrap items-baseline gap-x-2">
-          <span className="text-[13px] font-semibold text-ink-100">{title}</span>
-          {caption && <span className="text-[11px] text-ink-400">{caption}</span>}
-        </div>
-        {children && <div className="mt-1.5">{children}</div>}
+        {current === 'outcome' && (
+          missionSummary ? (
+            <Block label="Outcome" tone="ok">{missionSummary}</Block>
+          ) : (
+            <Waiting>
+              {done ? 'The mission ended without a written outcome.' : 'Still running.'}
+            </Waiting>
+          )
+        )}
       </div>
     </div>
   );
 }
+
+/** One specialist: what it was asked, and what it said back. */
+function AgentThread({ run, toolCalls }: { run: AgentRun; toolCalls: number }) {
+  const [open, setOpen] = useState(false);
+  const ms = new Date(run.finishedAt ?? run.startedAt).getTime() - new Date(run.startedAt).getTime();
+  const result = run.result?.trim() ?? '';
+  const long = result.length > 700;
+
+  const tone =
+    run.status === 'failed' ? 'crit' : run.status === 'running' ? 'info' : 'ok';
+  const border = {
+    crit: 'border-crit-500/40',
+    info: 'border-signal-500/45',
+    ok: 'border-ink-700',
+  }[tone];
+  const chip = {
+    crit: 'bg-crit-500/20 text-crit-400',
+    info: 'bg-signal-500/25 text-signal-400',
+    ok: 'bg-ink-800 text-ink-400',
+  }[tone];
+
+  return (
+    <article className={`overflow-hidden rounded-xl border bg-ink-900 ${border}`}>
+      <header className="flex items-center gap-2.5 border-b border-ink-800 px-3 py-2.5">
+        <span
+          className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-[10px] font-bold ${chip} ${
+            run.status === 'running' ? 'pulse-ring' : ''
+          }`}
+          aria-hidden
+        >
+          {run.agentType.split('-').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-mono text-[12.5px] font-semibold text-ink-100">
+            {run.agentType}
+          </div>
+          <div className="text-[10px] uppercase tracking-wide text-ink-500">
+            {run.status === 'running' ? 'working' : fmtDuration(ms)} · {toolCalls} tool call{toolCalls === 1 ? '' : 's'}
+          </div>
+        </div>
+      </header>
+
+      {run.task && (
+        <div className="border-b border-ink-800 bg-ink-100 px-3 py-2">
+          <div className="mb-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-ink-950/55">
+            From orchestrator
+          </div>
+          <div className="text-[12px] leading-relaxed text-ink-950">{run.task}</div>
+        </div>
+      )}
+
+      <div className="px-3 py-2.5">
+        <div className="mb-1 font-mono text-[9px] font-semibold uppercase tracking-wider text-ink-500">
+          Reported back
+        </div>
+        {result ? (
+          <>
+            <div
+              className={`whitespace-pre-wrap text-[12px] leading-relaxed text-ink-300 ${
+                long && !open ? 'max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]' : ''
+              }`}
+            >
+              {result}
+            </div>
+            {long && (
+              <button
+                onClick={() => setOpen(!open)}
+                className="mt-1.5 text-[11px] font-medium text-signal-300 hover:underline"
+              >
+                {open ? 'Show less' : 'Show full report'}
+              </button>
+            )}
+          </>
+        ) : (
+          <div className="text-[12px] text-ink-500">
+            {run.status === 'running' ? 'Working…' : 'Nothing returned.'}
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function Block({
+  label, tone, children,
+}: { label: string; tone: 'muted' | 'think' | 'ok'; children: React.ReactNode }) {
+  const style = {
+    muted: 'border-ink-700 bg-ink-900',
+    think: 'border-think-400/35 bg-think-400/[0.06]',
+    ok: 'border-ok-500/35 bg-ok-500/[0.06]',
+  }[tone];
+  return (
+    <div className={`rounded-xl border px-4 py-3 ${style}`}>
+      <div className="mb-1.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-ink-500">
+        {label}
+      </div>
+      <div className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-ink-200">{children}</div>
+    </div>
+  );
+}
+
+const Waiting = ({ children }: { children: React.ReactNode }) => (
+  <div className="rounded-xl border border-dashed border-ink-700 px-4 py-8 text-center text-[12px] text-ink-500">
+    {children}
+  </div>
+);
