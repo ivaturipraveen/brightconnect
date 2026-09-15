@@ -39,9 +39,16 @@ const GATED_TOOLS = new Set([
  * during testing, neither of which means anything here.
  */
 const DISALLOWED_TOOLS = [
-  'ListAgents', 'SendMessage', 'ToolSearch', 'WebSearch', 'WebFetch',
-  'TaskOutput', 'TaskStop', 'KillShell', 'Artifact', 'Skill',
-  'EnterPlanMode', 'ExitPlanMode', 'CronCreate', 'CronList', 'CronDelete',
+  // Agent-to-agent and session plumbing
+  'ListAgents', 'SendMessage', 'TaskOutput', 'TaskStop', 'KillShell',
+  // Discovery and outside-world access - the fleet works from its own tools
+  'ToolSearch', 'WebSearch', 'WebFetch', 'Skill',
+  // Host integrations that mean nothing inside a mission
+  'PushNotification', 'ScheduleWakeup', 'SendFeedback', 'Workflow',
+  'DesignSync', 'RemoteTrigger', 'Monitor', 'ReportFindings',
+  'ShareOnboardingGuide', 'Artifact', 'NotebookEdit', 'LSP',
+  'EnterWorktree', 'ExitWorktree', 'EnterPlanMode', 'ExitPlanMode',
+  'CronCreate', 'CronList', 'CronDelete',
 ];
 
 /** Missions currently executing, so they can be cancelled. */

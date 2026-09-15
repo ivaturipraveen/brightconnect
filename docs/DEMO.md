@@ -30,8 +30,18 @@ will recognise his own words, and that is what makes it land.
 ## Before you start
 
 ```bash
-curl -X POST http://<host>/api/sim/reset     # put the incident back
+npm run preflight                                  # key, subagents, tools, GitHub
+npm run dev:stable                                 # no file watcher - see below
+curl -X POST http://localhost:8787/api/sim/reset   # put the incident back
 ```
+
+**Use `dev:stable`, not `dev`.** The normal dev script watches files and restarts the
+server on any change - which kills a running mission. Nobody should be editing during a
+demo, but an editor autosave or a sync client is enough to do it.
+
+The mission view opens on the **Flow** tab. Leave it there while a mission runs - the
+delegation shape is what people want to see. **Activity** has the raw trail for anyone
+who asks for receipts.
 
 Open two tabs: **Incidents** and **Mission Control**. Have the repo open in a third.
 Confirm the header shows **agents ready** and the repo name — if it says *no API key*,
@@ -52,9 +62,11 @@ Point at the resource path — it is GCP-shaped, because that is his world.
 Now narrate what happens, because the speed is the point:
 
 1. The orchestrator writes its plan. Read the first line aloud.
-2. It engages **three specialists at once** — log analyst, config auditor, change
-   correlator. Say: *"These are three independent lines of enquiry. A human team
-   serialises them. Serialising costs you minutes of customer impact."*
+2. It engages **three specialists at once** - log analyst, config auditor, change
+   correlator. They land on **one row of the flow, marked "3 in parallel"**. Point at
+   that row: *"Three independent lines of enquiry, at the same time. A human team
+   serialises them, and serialising costs you minutes of customer impact."* Click a
+   card to show what that specialist was asked and what it reported back.
 3. Watch the tool calls stream: log queries, resource config, change records.
 4. The RCA analyst synthesises: a deploy four minutes before the first error cut the
    database connection pool from 50 to 5.
@@ -145,9 +157,21 @@ Pointing them at Cloud Monitoring and Cloud Logging is a scoped piece of work, n
 redesign. Do not overclaim this; he will check.
 
 **"What stops an agent doing something destructive?"**
-Three layers. Each agent only holds the tools its role needs. High-impact actions are
-gated on a human. And every mission has a hard spend ceiling. Show the fleet page —
-the log analyst cannot write code, and the code reviewer cannot touch production.
+Four layers, and they are worth showing rather than asserting:
+1. **Least privilege per agent.** On the Fleet page, the log analyst has no filesystem
+   tools at all; the code reviewer can read but not write.
+2. **Only the orchestrator touches the outside world.** No specialist can file a
+   ticket, open a pull request, or execute remediation - one accountable actor for
+   every external side effect.
+3. **High-impact actions are gated on a human**, and the gate lives inside the tool, so
+   it holds no matter which agent calls it.
+4. **A hard spend ceiling per mission**, after which the run aborts.
+
+**"Can we change how an agent behaves?"**
+Yes, live. Fleet page, click an agent, edit its prompt or swap its model, save - the
+next mission uses it. They are standard Claude Code agent files in `.claude/agents/`,
+so the same definitions also work from the Claude Code CLI. That is the honest answer
+to "are we buying a black box".
 
 **"What does this cost to run?"**
 Per-mission cost is on every mission, measured, including subagents. Use the real
