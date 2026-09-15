@@ -4,6 +4,7 @@ import { api, type Attachment, type ConsoleEvent, type Overview } from '../lib/a
 import { useActivityStream } from '../lib/stream.ts';
 import { Badge, Button, Panel, fmtCost } from '../components/ui.tsx';
 import ControlSidebar from '../components/ControlSidebar.tsx';
+import Markdown from '../components/Markdown.tsx';
 
 /**
  * The console: type a task or a question.
@@ -328,8 +329,8 @@ function TurnView({ turn, streaming }: { turn: Turn; streaming: boolean }) {
       )}
 
       {turn.content && (
-        <div className="whitespace-pre-wrap rounded-lg border border-ink-700 bg-ink-850 px-3 py-2.5 text-[13px] leading-relaxed text-ink-200">
-          {turn.content}
+        <div className="rounded-lg border border-ink-700 bg-ink-850 px-3 py-2.5">
+          <Markdown className="text-[13px]">{turn.content}</Markdown>
         </div>
       )}
       {!turn.content && streaming && (

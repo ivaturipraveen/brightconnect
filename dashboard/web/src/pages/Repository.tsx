@@ -3,6 +3,7 @@ import {
   api, type CommitDetail, type DiffFile, type PullDetail, type RepoCommit, type RepoPull,
 } from '../lib/api.ts';
 import { Badge, Empty, Panel, relTime } from '../components/ui.tsx';
+import Markdown from '../components/Markdown.tsx';
 
 /**
  * What the fleet has actually landed: pull requests it opened and commits on
@@ -188,9 +189,9 @@ function DetailView({ detail }: { detail: PullDetail | CommitDetail }) {
           </a>
         </div>
         {isPull && detail.body && (
-          <p className="mt-2.5 max-h-40 overflow-y-auto whitespace-pre-wrap text-[12px] leading-relaxed text-ink-300">
-            {detail.body}
-          </p>
+          <div className="mt-2.5 max-h-40 overflow-y-auto">
+            <Markdown className="text-[12px] text-ink-300">{detail.body}</Markdown>
+          </div>
         )}
       </header>
 

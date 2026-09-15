@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { AgentRun, MissionEvent, MissionKind } from '../lib/api.ts';
 import { fmtDuration } from './ui.tsx';
+import Markdown from './Markdown.tsx';
 
 /**
  * The mission as a graph: intake, the orchestrator, and the specialists it
@@ -54,6 +55,25 @@ interface Node {
 
 const toolCallsFor = (events: MissionEvent[], agent: string) =>
   events.filter((e) => e.type === 'tool.called' && e.actor === agent).length;
+
+/**
+ * Markdown syntax stripped for the small card previews.
+ *
+ * A four-line thumbnail rendered as real markdown is mostly heading margins, so
+ * the cards show the prose and the detail pane renders it properly.
+ */
+function plainPreview(text: string): string {
+  return text
+    .replace(/^```.*$/gm, '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '• ')
+    .replace(/^\s*(---+|\*\*\*+|___+)\s*$/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)\s]+\)/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
 
 export default function MissionGraph({
   agents, events, missionKind, missionStatus, missionInput, missionSummary,
@@ -258,7 +278,7 @@ export default function MissionGraph({
                       {n.bodyLabel}
                     </div>
                     <div className="line-clamp-4 whitespace-pre-wrap text-[10.5px] leading-snug text-ink-300">
-                      {n.body}
+                      {plainPreview(n.body)}
                     </div>
                   </div>
                 ) : (
@@ -329,13 +349,19 @@ function Detail({
       >
         {label}
       </div>
-      <div
-        className={`whitespace-pre-wrap text-[12px] leading-relaxed ${
-          tone === 'instruction' ? 'text-ink-950' : 'text-ink-300'
-        }`}
-      >
-        {children}
-      </div>
+      {typeof children === 'string' ? (
+        <Markdown className={`text-[12px] ${tone === 'instruction' ? 'text-ink-950' : 'text-ink-300'}`}>
+          {children}
+        </Markdown>
+      ) : (
+        <div
+          className={`whitespace-pre-wrap text-[12px] leading-relaxed ${
+            tone === 'instruction' ? 'text-ink-950' : 'text-ink-300'
+          }`}
+        >
+          {children}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { AgentRun, MissionEvent, MissionKind } from '../lib/api.ts';
 import { fmtDuration } from './ui.tsx';
+import Markdown from './Markdown.tsx';
 
 /**
  * The execution view.
@@ -261,11 +262,11 @@ function AgentThread({ run, toolCalls }: { run: AgentRun; toolCalls: number }) {
         {result ? (
           <>
             <div
-              className={`whitespace-pre-wrap text-[12px] leading-relaxed text-ink-300 ${
+              className={
                 long && !open ? 'max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]' : ''
-              }`}
+              }
             >
-              {result}
+              <Markdown className="text-[12px] text-ink-300">{result}</Markdown>
             </div>
             {long && (
               <button
@@ -299,7 +300,9 @@ function Block({
       <div className="mb-1.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-ink-500">
         {label}
       </div>
-      <div className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-ink-200">{children}</div>
+      {typeof children === 'string'
+        ? <Markdown className="text-[12.5px]">{children}</Markdown>
+        : <div className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-ink-200">{children}</div>}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import {
 } from '../components/ui.tsx';
 import MissionFlow from '../components/MissionFlow.tsx';
 import MissionGraph from '../components/MissionGraph.tsx';
+import Markdown from '../components/Markdown.tsx';
 
 const EVENT_STYLE: Record<string, { tone: Tone; label: string }> = {
   'mission.created': { tone: 'neutral', label: 'mission' },
@@ -74,7 +75,7 @@ export default function MissionDetail() {
   const isLive = ['running', 'queued', 'awaiting_approval'].includes(mission.status);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
+    <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto pb-2">
       <header className="flex shrink-0 flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <Link to="/missions" className="text-[12px] text-ink-400 hover:text-signal-300">
@@ -130,7 +131,7 @@ export default function MissionDetail() {
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid min-h-[26rem] flex-1 shrink-0 gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <Panel
           title={
             <div className="flex items-center gap-1">
@@ -239,17 +240,18 @@ export default function MissionDetail() {
         </div>
       </div>
 
+      {/* Bounded on purpose. The page is a fixed-height flex column, so an
+          unbounded summary - and they run to a screenful - pushed past the
+          bottom and the panels above it drew over it. */}
       {mission.summary && (
-        <Panel title="Mission outcome" className="shrink-0">
-          <pre className="whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-ink-200">
-            {mission.summary}
-          </pre>
+        <Panel title="Mission outcome" className="max-h-[22rem] shrink-0 overflow-y-auto">
+          <Markdown className="text-[13px]">{mission.summary}</Markdown>
         </Panel>
       )}
 
       {mission.error && (
-        <Panel title="Failure">
-          <div className="text-[13px] text-crit-400">{mission.error}</div>
+        <Panel title="Failure" className="max-h-56 shrink-0 overflow-y-auto">
+          <div className="whitespace-pre-wrap text-[13px] text-crit-400">{mission.error}</div>
         </Panel>
       )}
 
@@ -394,17 +396,19 @@ function EventGroup({ group }: { group: Group }) {
               <span className="ml-auto text-[11px] text-ink-500">{relTime(e.createdAt)}</span>
             </div>
             {e.text && (
-              <div
-                className={
-                  narrative
-                    ? 'mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-ink-200'
-                    : e.type === 'agent.thinking'
+              narrative ? (
+                <Markdown className="mt-1 text-[13px]">{e.text}</Markdown>
+              ) : (
+                <div
+                  className={
+                    e.type === 'agent.thinking'
                       ? 'mt-1 line-clamp-6 whitespace-pre-wrap border-l-2 border-think-400/40 pl-2 text-[12px] italic leading-snug text-ink-400'
                       : 'mt-1 line-clamp-3 whitespace-pre-wrap font-mono text-[12px] leading-snug text-ink-300'
-                }
-              >
-                {e.text}
-              </div>
+                  }
+                >
+                  {e.text}
+                </div>
+              )
             )}
           </div>
         );
