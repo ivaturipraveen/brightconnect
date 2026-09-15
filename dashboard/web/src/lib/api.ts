@@ -97,20 +97,6 @@ export interface Artifact {
   createdAt: string;
 }
 
-export interface Alert {
-  id: string;
-  severity: 'critical' | 'warning' | 'info';
-  service: string;
-  title: string;
-  description: string;
-  resource: string;
-  metric?: string | null;
-  value?: string | null;
-  threshold?: string | null;
-  status: 'firing' | 'acknowledged' | 'resolved';
-  firedAt: string;
-}
-
 export interface FleetMember {
   id: string;
   name: string;
@@ -270,15 +256,9 @@ export const api = {
     req<{ ok: boolean; id: string }>(`/missions/${id}`, { method: 'DELETE' }),
   deleteAllMissions: () =>
     req<{ ok: boolean; deleted: number }>('/missions', { method: 'DELETE' }),
-  deleteAlert: (id: string) =>
-    req<{ ok: boolean; id: string }>(`/alerts/${id}`, { method: 'DELETE' }),
   cancelMission: (id: string) =>
     req<{ cancelled: boolean }>(`/missions/${id}/cancel`, { method: 'POST' }),
 
-  alerts: () => req<Alert[]>('/alerts'),
-  triggerAlert: (id: string) =>
-    req<Mission>(`/alerts/${id}/trigger`, { method: 'POST' }),
-  resetSim: () => req<{ ok: boolean }>('/sim/reset', { method: 'POST' }),
 
   approvals: () => req<Approval[]>('/approvals'),
   decide: (id: string, decision: 'approved' | 'rejected', reason?: string) =>

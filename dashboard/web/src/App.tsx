@@ -10,12 +10,10 @@ import Console from './pages/Console.tsx';
 import MissionControl from './pages/MissionControl.tsx';
 import MissionDetail from './pages/MissionDetail.tsx';
 import Fleet from './pages/Fleet.tsx';
-import Incidents from './pages/Incidents.tsx';
 
 const NAV = [
   { to: '/console', label: 'Console' },
   { to: '/missions', label: 'Mission Control' },
-  { to: '/incidents', label: 'Incidents' },
   { to: '/fleet', label: 'Agent Fleet' },
   { to: '/repository', label: 'Repository' },
   { to: '/analytics', label: 'Analytics' },
@@ -112,7 +110,6 @@ export default function App() {
           <Route path="/console" element={<Console />} />
           <Route path="/missions" element={<MissionControl />} />
           <Route path="/missions/:id" element={<MissionDetail />} />
-          <Route path="/incidents" element={<Incidents />} />
           <Route path="/fleet" element={<Fleet />} />
           <Route path="/repository" element={<Repository />} />
           <Route path="/analytics" element={<Analytics />} />
