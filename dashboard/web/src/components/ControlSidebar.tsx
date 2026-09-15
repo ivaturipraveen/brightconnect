@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { Overview } from '../lib/api.ts';
+import { statusLabel } from './ui.tsx';
 
 /**
  * The right-hand rail: what this session has done, who is working, and where
@@ -27,14 +28,14 @@ export default function ControlSidebar({ overview }: { overview: Overview | null
           </svg>
           Session
         </h2>
-        <div className="grid grid-cols-3 gap-2">
-          <Stat label="working" value={s?.agentsWorking ?? 0} highlight={(s?.agentsWorking ?? 0) > 0} />
-          <Stat label="missions" value={s?.totalMissions ?? 0} />
-          <Stat label="artifacts" value={s?.artifacts ?? 0} />
-        </div>
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          <Stat label="awaiting you" value={s?.pendingApprovals ?? 0} highlight={(s?.pendingApprovals ?? 0) > 0} warn />
-          <Stat label="spend" value={`$${(s?.spendUsd ?? 0).toFixed(2)}`} />
+        {/* Five across, one row. Three-then-two left an orphaned pair and made
+            the panel look like it had two unrelated sections. */}
+        <div className="grid grid-cols-5 gap-1.5">
+          <Stat label="Working" value={s?.agentsWorking ?? 0} highlight={(s?.agentsWorking ?? 0) > 0} />
+          <Stat label="Missions" value={s?.totalMissions ?? 0} />
+          <Stat label="Artifacts" value={s?.artifacts ?? 0} />
+          <Stat label="Awaiting" value={s?.pendingApprovals ?? 0} highlight={(s?.pendingApprovals ?? 0) > 0} warn />
+          <Stat label="Spend" value={`$${(s?.spendUsd ?? 0).toFixed(2)}`} />
         </div>
       </section>
 
@@ -62,7 +63,7 @@ export default function ControlSidebar({ overview }: { overview: Overview | null
                 {overview?.orchestrator.title ?? 'Orchestrator'}
               </span>
               <span className={`text-[9px] ${overview?.orchestrator.status === 'working' ? 'text-think-400' : 'text-ink-600'}`}>
-                {overview?.orchestrator.status ?? 'idle'}
+                {statusLabel(overview?.orchestrator.status ?? 'idle')}
               </span>
             </div>
             <div className="text-[10px] leading-tight text-ink-500">
@@ -143,18 +144,18 @@ function Stat({
   const lit = highlight && warn;
   return (
     <div
-      className={`rounded-lg border px-2.5 py-2.5 ${
+      className={`overflow-hidden rounded-lg border px-1.5 py-2 text-center ${
         lit ? 'border-warn-500/40 bg-warn-500/[0.07]' : 'border-ink-700 bg-ink-850'
       }`}
     >
       <div
-        className={`font-mono text-[19px] font-semibold leading-none tabular-nums ${
+        className={`truncate font-mono text-[15px] font-semibold leading-none tabular-nums ${
           lit ? 'text-warn-400' : highlight ? 'text-signal-400' : 'text-ink-100'
         }`}
       >
         {value}
       </div>
-      <div className="mt-1.5 text-[9px] uppercase tracking-wider text-ink-500">{label}</div>
+      <div className="mt-1.5 truncate text-[8.5px] uppercase tracking-wide text-ink-500">{label}</div>
     </div>
   );
 }

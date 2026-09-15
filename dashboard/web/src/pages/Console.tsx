@@ -4,6 +4,7 @@ import { api, type Attachment, type ConsoleEvent, type Overview } from '../lib/a
 import { useActivityStream } from '../lib/stream.ts';
 import { Badge, Button, Panel, fmtCost } from '../components/ui.tsx';
 import ControlSidebar from '../components/ControlSidebar.tsx';
+import SplitPane from '../components/SplitPane.tsx';
 import Markdown from '../components/Markdown.tsx';
 
 /**
@@ -24,9 +25,38 @@ interface Turn {
   cost?: number;
 }
 
+/**
+ * The conversation, kept across navigation.
+ *
+ * The console holds its history in component state, and React unmounts the page
+ * the moment you visit Mission Control - so a conversation vanished the instant
+ * you went to look at the mission it had just started, which is the first thing
+ * anybody does. sessionStorage keeps it for the life of the tab, which is the
+ * right lifetime: it survives navigation and a refresh, and a new tab starts
+ * clean rather than inheriting somebody else's session.
+ */
+const HISTORY_KEY = 'brightconnect.console.turns';
+const DRAFT_KEY = 'brightconnect.console.draft';
+
+function loadHistory(): Turn[] {
+  try {
+    const raw = sessionStorage.getItem(HISTORY_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? (parsed as Turn[]) : [];
+  } catch {
+    return []; // storage disabled, or a shape we no longer understand
+  }
+}
+
 export default function Console() {
-  const [turns, setTurns] = useState<Turn[]>([]);
-  const [input, setInput] = useState('');
+  const [turns, setTurns] = useState<Turn[]>(loadHistory);
+  const [input, setInput] = useState(() => {
+    try {
+      return sessionStorage.getItem(DRAFT_KEY) ?? '';
+    } catch {
+      return '';
+    }
+  });
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +78,39 @@ export default function Console() {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [turns, busy]);
+
+  // Persist the conversation and the unsent draft as they change.
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(HISTORY_KEY, JSON.stringify(turns));
+    } catch {
+      // A conversation too large to store is not a reason to lose the page.
+    }
+  }, [turns]);
+
+  useEffect(() => {
+    try {
+      if (input) sessionStorage.setItem(DRAFT_KEY, input);
+      else sessionStorage.removeItem(DRAFT_KEY);
+    } catch {
+      /* storage disabled */
+    }
+  }, [input]);
+
+  /** Start again, and forget the stored conversation with it. */
+  const newConversation = () => {
+    if (turns.length > 0 && !window.confirm('Clear this conversation and start a new one?')) return;
+    setTurns([]);
+    setInput('');
+    setAttachments([]);
+    setError(null);
+    try {
+      sessionStorage.removeItem(HISTORY_KEY);
+      sessionStorage.removeItem(DRAFT_KEY);
+    } catch {
+      /* storage disabled */
+    }
+  };
 
   const attach = async (files: FileList | null) => {
     if (!files?.length) return;
@@ -134,7 +197,16 @@ export default function Console() {
   };
 
   return (
-    <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <div className="shrink-0">
+        <h1 className="text-xl font-semibold text-ink-100">Console</h1>
+        <p className="mt-0.5 max-w-3xl text-[13px] text-ink-400">
+          Ask a question and it answers from platform state. Describe work and it briefs the
+          fleet and starts a mission.
+        </p>
+      </div>
+
+      <SplitPane id="console" className="min-h-0 flex-1" initial={320} min={260} max={620} left={
       <Panel
         title={
           <div className="flex items-center gap-1">
@@ -153,11 +225,22 @@ export default function Console() {
         }
         dense
         actions={
-          <span className="text-[11px] text-ink-500">
-            {view === 'console'
-              ? 'ask a question, or describe work to be done'
-              : 'the product the fleet maintains, live'}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] text-ink-500">
+              {view === 'console'
+                ? 'Ask a question, or describe work to be done'
+                : 'The product the fleet maintains, live'}
+            </span>
+            {view === 'console' && turns.length > 0 && (
+              <button
+                type="button"
+                onClick={newConversation}
+                className="rounded px-2 py-0.5 text-[11px] text-ink-400 transition-colors hover:bg-ink-800 hover:text-ink-100"
+              >
+                New conversation
+              </button>
+            )}
+          </div>
         }
       >
         <div className={`flex min-h-0 flex-1 flex-col ${view === 'preview' ? 'hidden' : ''}`}>
@@ -257,8 +340,7 @@ export default function Console() {
           </div>
         )}
       </Panel>
-
-      <ControlSidebar overview={overview} />
+    } right={<ControlSidebar overview={overview} />} />
     </div>
   );
 }

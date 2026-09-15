@@ -141,12 +141,12 @@ function Logo() {
 function ReadinessPills({ config, connected }: { config: AppConfig; connected: boolean }) {
   const ready = config.readiness.anthropic && connected;
   const label = !config.readiness.anthropic
-    ? 'no API key'
+    ? 'No API key'
     : !connected
-      ? 'reconnecting'
+      ? 'Reconnecting'
       : config.readiness.github
-        ? 'ready'
-        : 'ready · github local';
+        ? 'Ready'
+        : 'Ready · GitHub local';
 
   return (
     <Badge tone={ready ? 'ok' : config.readiness.anthropic ? 'warn' : 'crit'}>

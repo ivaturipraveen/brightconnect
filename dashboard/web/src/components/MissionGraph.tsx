@@ -265,11 +265,11 @@ export default function MissionGraph({
 
               <div className="min-h-0 flex-1 space-y-1.5 overflow-hidden px-2.5 py-2">
                 {n.brief && (
-                  <div className="rounded border border-ink-700 bg-ink-100 px-1.5 py-1">
-                    <div className="font-mono text-[8px] font-semibold uppercase tracking-wider text-ink-950/55">
+                  <div className="rounded border border-signal-500/25 bg-signal-500/[0.07] px-1.5 py-1">
+                    <div className="font-mono text-[8px] font-semibold uppercase tracking-wider text-signal-300/80">
                       Asked
                     </div>
-                    <div className="line-clamp-2 text-[10.5px] leading-snug text-ink-950">{n.brief}</div>
+                    <div className="line-clamp-2 text-[10.5px] leading-snug text-ink-100">{n.brief}</div>
                   </div>
                 )}
                 {n.body ? (
@@ -339,24 +339,26 @@ function Detail({
   return (
     <div
       className={`rounded-lg border px-3 py-2.5 ${
-        tone === 'instruction' ? 'border-ink-600 bg-ink-100' : 'border-ink-700 bg-ink-900'
+        tone === 'instruction'
+          ? 'border-signal-500/30 bg-signal-500/[0.07]'
+          : 'border-ink-700 bg-ink-900'
       }`}
     >
       <div
         className={`mb-1 font-mono text-[9px] font-semibold uppercase tracking-wider ${
-          tone === 'instruction' ? 'text-ink-950/55' : 'text-ink-500'
+          tone === 'instruction' ? 'text-signal-300/80' : 'text-ink-500'
         }`}
       >
         {label}
       </div>
       {typeof children === 'string' ? (
-        <Markdown className={`text-[12px] ${tone === 'instruction' ? 'text-ink-950' : 'text-ink-300'}`}>
+        <Markdown className={`text-[12px] ${tone === 'instruction' ? 'text-ink-100' : 'text-ink-300'}`}>
           {children}
         </Markdown>
       ) : (
         <div
           className={`whitespace-pre-wrap text-[12px] leading-relaxed ${
-            tone === 'instruction' ? 'text-ink-950' : 'text-ink-300'
+            tone === 'instruction' ? 'text-ink-100' : 'text-ink-300'
           }`}
         >
           {children}

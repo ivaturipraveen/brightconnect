@@ -3,15 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api, type Artifact, type InboundEvent, type Mission, type MissionEvent, type MissionKind, type Template } from '../lib/api.ts';
 import { useActivityStream } from '../lib/stream.ts';
 import {
-  Badge, Button, Empty, Panel, StatusDot, fmtCost, fmtDuration, relTime, type Tone,
+  Badge, Elapsed, Button, Empty, Panel, StatusDot, fmtCost, fmtDuration, kindLabel, relTime, statusLabel, type Tone,
 } from '../components/ui.tsx';
 
-const KIND_LABEL: Record<MissionKind, string> = {
-  sdlc: 'delivery',
-  incident: 'incident',
-  ticket: 'ticket',
-  review: 'review',
-};
 const KIND_TONE: Record<MissionKind, Tone> = {
   sdlc: 'info',
   incident: 'crit',
@@ -20,10 +14,10 @@ const KIND_TONE: Record<MissionKind, Tone> = {
 };
 /** Where the work came from - a click, or the outside world. */
 const TRIGGER_LABEL: Record<string, string> = {
-  manual: 'launched by hand',
-  alert: 'from an alert',
+  manual: 'Launched by hand',
+  alert: 'From an alert',
   github_webhook: 'GitHub webhook',
-  github_poll: 'seen on GitHub',
+  github_poll: 'Seen on GitHub',
 };
 
 const STATUS_TONE: Record<string, Tone> = {
@@ -125,9 +119,9 @@ export default function MissionControl() {
           <div className="flex items-center gap-3">
             <span className="text-[11px] text-ink-500">
               {tab === 'audit'
-                ? 'every gated decision and outcome, appended not rewritten'
+                ? 'Every gated decision and outcome, appended not rewritten'
                 : tab === 'artifacts'
-                  ? 'what the fleet produced'
+                  ? 'What the fleet produced'
                   : ''}
             </span>
             {tab === 'missions' && missions.length > 0 && (
@@ -185,7 +179,7 @@ export default function MissionControl() {
                       {a.url}
                     </a>
                   ) : (
-                    <span className="text-[11px] text-ink-500">recorded locally — no GitHub token</span>
+                    <span className="text-[11px] text-ink-500">Recorded locally — no GitHub token</span>
                   )}
                 </li>
               ))}
@@ -356,21 +350,23 @@ function MissionTable({ missions, onDeleted }: { missions: Mission[]; onDeleted:
                 </Link>
               </td>
               <td className="px-3 py-2.5">
-                <Badge tone={KIND_TONE[m.kind]}>{KIND_LABEL[m.kind]}</Badge>
+                <Badge tone={KIND_TONE[m.kind]}>{kindLabel(m.kind)}</Badge>
                 {m.sourceRef && (
                   <div className="mt-0.5 font-mono text-[10px] text-ink-500">{m.sourceRef}</div>
                 )}
               </td>
               <td className="px-3 py-2.5">
                 <Badge tone={STATUS_TONE[m.status] ?? 'neutral'}>
-                  {m.status.replace('_', ' ')}
+                  {statusLabel(m.status)}
                 </Badge>
               </td>
               <td className="px-3 py-2.5 text-right font-mono tabular-nums text-ink-300">
                 {m.numTurns || '-'}
               </td>
               <td className="px-3 py-2.5 text-right font-mono tabular-nums text-ink-300">
-                {fmtDuration(m.durationMs)}
+                {m.durationMs
+                  ? fmtDuration(m.durationMs)
+                  : <Elapsed startedAt={m.startedAt ?? m.createdAt} finishedAt={m.finishedAt} />}
               </td>
               <td className="px-3 py-2.5 text-right font-mono tabular-nums text-ink-300">
                 {fmtCost(m.costUsd)}

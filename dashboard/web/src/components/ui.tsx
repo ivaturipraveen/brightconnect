@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 /* Shared primitives. Kept small and explicit rather than abstracted early. */
 
@@ -144,3 +144,77 @@ export const fmtDuration = (ms: number) => {
 };
 
 export const fmtCost = (usd: number) => (usd ? `$${usd.toFixed(3)}` : '$0.000');
+
+/**
+ * Labels, in one place and in sentence case.
+ *
+ * Statuses and kinds arrive from the API as machine values - `sdlc`,
+ * `awaiting_approval`, `running` - and were being printed raw, so the dashboard
+ * read as a database dump: "delivery", "running", "ready" in lower case beside
+ * properly cased headings.
+ */
+const KIND_NAMES: Record<string, string> = {
+  sdlc: 'Delivery',
+  incident: 'Incident',
+  ticket: 'Ticket',
+  review: 'Review',
+};
+
+const STATUS_NAMES: Record<string, string> = {
+  queued: 'Queued',
+  running: 'Running',
+  awaiting_approval: 'Awaiting you',
+  succeeded: 'Succeeded',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+  working: 'Working',
+  idle: 'Idle',
+  firing: 'Firing',
+  resolved: 'Resolved',
+  ready: 'Ready',
+  pending: 'Pending',
+  approved: 'Approved',
+  rejected: 'Rejected',
+  ignored: 'Ignored',
+  duplicate: 'Duplicate',
+  dispatched: 'Dispatched',
+};
+
+/** Sentence case for anything not in the maps above. */
+const sentence = (v: string) =>
+  v ? v.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()) : v;
+
+export const kindLabel = (kind: string): string => KIND_NAMES[kind] ?? sentence(kind);
+export const statusLabel = (status: string): string => STATUS_NAMES[status] ?? sentence(status);
+
+/**
+ * Elapsed time for something still running, ticking once a second.
+ *
+ * Duration was only written when a mission finished, so a live mission showed
+ * "-" in the one column people watch while they wait. Passing `null` for the
+ * end time means "still going"; the hook re-renders until it stops.
+ */
+export function useElapsed(startedAt: string | null | undefined, finishedAt: string | null | undefined) {
+  const [now, setNow] = useState(() => Date.now());
+  const live = Boolean(startedAt) && !finishedAt;
+
+  useEffect(() => {
+    if (!live) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [live]);
+
+  if (!startedAt) return null;
+  const end = finishedAt ? new Date(finishedAt).getTime() : now;
+  const ms = end - new Date(startedAt).getTime();
+  return Number.isFinite(ms) && ms >= 0 ? ms : null;
+}
+
+/** Duration text that keeps counting while the thing is still running. */
+export function Elapsed({
+  startedAt, finishedAt, fallback = '—',
+}: { startedAt?: string | null; finishedAt?: string | null; fallback?: string }) {
+  const ms = useElapsed(startedAt, finishedAt);
+  if (ms === null) return <>{fallback}</>;
+  return <>{fmtDuration(ms)}</>;
+}

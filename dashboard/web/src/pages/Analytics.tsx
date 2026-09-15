@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Analytics as Data } from '../lib/api.ts';
-import { Badge, Empty, Panel, fmtCost, fmtDuration, relTime } from '../components/ui.tsx';
+import { Badge, Empty, Panel, fmtCost, fmtDuration, kindLabel, relTime, statusLabel } from '../components/ui.tsx';
 
 /**
  * What the fleet has done, what it consumed, and what it cost.
@@ -34,7 +34,7 @@ export default function Analytics() {
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Big label="Total spend" value={fmtCost(t.spendUsd)} hint={`${fmtCost(t.avgSpendUsd)} per mission`} />
         <Big label="Tokens" value={fmtTokens(totalTokens)} hint={`${fmtTokens(t.inputTokens)} in · ${fmtTokens(t.outputTokens)} out`} />
         <Big
@@ -104,7 +104,7 @@ export default function Analytics() {
             <tbody>
               {d.byKind.map((k) => (
                 <tr key={k.kind} className="border-b border-ink-800 last:border-0">
-                  <td className="px-4 py-2.5"><Badge tone="info">{KIND[k.kind] ?? k.kind}</Badge></td>
+                  <td className="px-4 py-2.5"><Badge tone="info">{kindLabel(k.kind)}</Badge></td>
                   <td className="px-3 py-2.5 text-right font-mono tabular-nums text-ink-300">{k.missions}</td>
                   <td className="px-3 py-2.5 text-right font-mono tabular-nums text-ink-300">{fmtTokens(k.tokens)}</td>
                   <td className="px-4 py-2.5 text-right font-mono tabular-nums text-ink-100">{fmtCost(k.spendUsd)}</td>
@@ -121,6 +121,7 @@ export default function Analytics() {
             <thead className="sticky top-0 bg-ink-900">
               <tr className="border-b border-ink-700 text-left text-[11px] uppercase tracking-wide text-ink-400">
                 <th className="px-4 py-2 font-medium">Agent</th>
+                <th className="px-3 py-2 text-right font-medium">Avg time</th>
                 <th className="px-3 py-2 text-right font-medium">Runs</th>
                 <th className="px-4 py-2 text-right font-medium">Succeeded</th>
               </tr>
@@ -132,6 +133,9 @@ export default function Analytics() {
                     <span className="text-[12.5px] font-medium text-ink-100">{a.name}</span>
                     <span className="ml-2 text-[11px] text-ink-400">{a.title}</span>
                     <span className="ml-2 font-mono text-[10px] text-ink-500">{a.id}</span>
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono tabular-nums text-ink-300">
+                    {a.avgMs ? fmtDuration(a.avgMs) : <span className="text-ink-600">—</span>}
                   </td>
                   <td className="px-3 py-2 text-right font-mono tabular-nums text-ink-300">
                     {a.runs || <span className="text-ink-600">—</span>}
@@ -157,7 +161,7 @@ export default function Analytics() {
                   {m.title}
                 </Link>
                 <Badge tone={m.status === 'succeeded' ? 'ok' : m.status === 'failed' ? 'crit' : 'info'}>
-                  {m.status.replace('_', ' ')}
+                  {statusLabel(m.status)}
                 </Badge>
                 <span className="font-mono text-[11px] tabular-nums text-ink-400">{fmtTokens(m.tokens)}</span>
                 <span className="font-mono text-[11px] tabular-nums text-ink-300">{fmtCost(m.spendUsd)}</span>
@@ -171,9 +175,6 @@ export default function Analytics() {
   );
 }
 
-const KIND: Record<string, string> = {
-  sdlc: 'delivery', incident: 'incident', ticket: 'ticket', review: 'review',
-};
 const TRIGGER: Record<string, string> = {
   manual: 'Console',
   alert: 'Monitoring alert',

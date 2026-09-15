@@ -238,6 +238,7 @@ app.get('/api/analytics', async () => {
       department: m.department,
       runs: runsBy.get(m.id)?.runs ?? 0,
       succeeded: runsBy.get(m.id)?.succeeded ?? 0,
+      avgMs: runsBy.get(m.id)?.avgMs ?? 0,
     })).sort((a, b) => b.runs - a.runs),
     recent: all.slice(0, 12).map((m) => ({
       id: m.id,

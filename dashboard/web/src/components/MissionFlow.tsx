@@ -247,11 +247,11 @@ function AgentThread({ run, toolCalls }: { run: AgentRun; toolCalls: number }) {
       </header>
 
       {run.task && (
-        <div className="border-b border-ink-800 bg-ink-100 px-3 py-2">
-          <div className="mb-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-ink-950/55">
+        <div className="border-b border-ink-800 bg-signal-500/[0.07] px-3 py-2">
+          <div className="mb-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-signal-300/80">
             From orchestrator
           </div>
-          <div className="text-[12px] leading-relaxed text-ink-950">{run.task}</div>
+          <div className="text-[12px] leading-relaxed text-ink-100">{run.task}</div>
         </div>
       )}
 

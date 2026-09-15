@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, type Alert } from '../lib/api.ts';
 import { useActivityStream } from '../lib/stream.ts';
-import { Badge, Button, Empty, Panel, StatusDot, relTime, type Tone } from '../components/ui.tsx';
+import { Badge, Button, Empty, Panel, StatusDot, relTime, statusLabel, type Tone } from '../components/ui.tsx';
 
 const SEVERITY_TONE: Record<string, Tone> = { critical: 'crit', warning: 'warn', info: 'info' };
 
@@ -68,7 +68,7 @@ export default function Incidents() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusDot status={a.status} />
-                    <Badge tone={SEVERITY_TONE[a.severity] ?? 'neutral'}>{a.severity}</Badge>
+                    <Badge tone={SEVERITY_TONE[a.severity] ?? 'neutral'}>{statusLabel(a.severity)}</Badge>
                     <span className="text-[14px] font-medium text-ink-100">{a.title}</span>
                     <span className="font-mono text-[11px] text-ink-500">{a.id}</span>
                   </div>

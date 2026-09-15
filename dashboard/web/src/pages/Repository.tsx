@@ -57,6 +57,14 @@ export default function Repository() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
+      <div className="shrink-0">
+        <h1 className="text-xl font-semibold text-ink-100">Repository</h1>
+        <p className="mt-0.5 max-w-3xl text-[13px] text-ink-400">
+          What the fleet has opened and what has landed. Select a pull request or a commit to
+          read its diff, file by file.
+        </p>
+      </div>
+
       <Panel
         title={
           <div className="flex items-center gap-1">
@@ -76,7 +84,7 @@ export default function Repository() {
         }
         dense
         className="min-h-0 flex-1"
-        actions={<span className="text-[11px] text-ink-500">select one to see the diff</span>}
+        actions={<span className="text-[11px] text-ink-500">Select one to see the diff</span>}
       >
         <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
           <ul className="min-h-0 divide-y divide-ink-800 overflow-y-auto border-ink-700 lg:border-r">

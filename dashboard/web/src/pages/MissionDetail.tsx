@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   api, type AgentRun, type Approval, type Artifact, type Mission, type MissionEvent,
 } from '../lib/api.ts';
 import { useActivityStream } from '../lib/stream.ts';
 import {
-  Badge, Button, Empty, Panel, StatusDot, fmtCost, fmtDuration, relTime, type Tone,
+  Badge, Elapsed, Button, Empty, Panel, StatusDot, fmtCost, fmtDuration, relTime, statusLabel, type Tone,
 } from '../components/ui.tsx';
 import MissionFlow from '../components/MissionFlow.tsx';
 import MissionGraph from '../components/MissionGraph.tsx';
 import Markdown from '../components/Markdown.tsx';
+import SplitPane from '../components/SplitPane.tsx';
 
 const EVENT_STYLE: Record<string, { tone: Tone; label: string }> = {
   'mission.created': { tone: 'neutral', label: 'mission' },
@@ -88,10 +89,10 @@ export default function MissionDetail() {
           <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-ink-400">
             <Badge tone={mission.kind === 'incident' ? 'crit' : mission.kind === 'ticket' ? 'think' : mission.kind === 'review' ? 'ok' : 'info'}>
               {{
-                incident: 'incident response',
-                sdlc: 'software delivery',
-                ticket: 'ticket resolution',
-                review: 'pull request review',
+                incident: 'Incident response',
+                sdlc: 'Software delivery',
+                ticket: 'Ticket resolution',
+                review: 'Pull request review',
               }[mission.kind]}
             </Badge>
             {mission.sourceRef && (
@@ -100,10 +101,10 @@ export default function MissionDetail() {
               </Badge>
             )}
             <Badge tone={mission.status === 'failed' ? 'crit' : mission.status === 'succeeded' ? 'ok' : 'warn'}>
-              {mission.status.replace('_', ' ')}
+              {statusLabel(mission.status)}
             </Badge>
-            <span className="font-mono">{mission.id}</span>
-            <span>started {relTime(mission.createdAt)}</span>
+            <span>Started {relTime(mission.createdAt)}</span>
+            <MissionRef id={mission.id} />
           </div>
         </div>
         {isLive && (
@@ -118,7 +119,14 @@ export default function MissionDetail() {
       <div className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-1.5 rounded-lg border border-ink-700 bg-ink-900 px-3.5 py-2 text-[12px]">
         <Stat label="agents" value={agents.length} extra={`${agents.filter((a) => a.status === 'running').length} working`} />
         <Stat label="turns" value={mission.numTurns || '—'} />
-        <Stat label="duration" value={fmtDuration(mission.durationMs)} />
+        <Stat
+          label="duration"
+          value={
+            mission.durationMs
+              ? fmtDuration(mission.durationMs)
+              : <Elapsed startedAt={mission.startedAt ?? mission.createdAt} finishedAt={mission.finishedAt} />
+          }
+        />
         <Stat label="tokens" value={`${((mission.inputTokens + mission.outputTokens) / 1000).toFixed(1)}k`} />
         <Stat label="cost" value={fmtCost(mission.costUsd)} />
       </div>
@@ -131,7 +139,13 @@ export default function MissionDetail() {
         </div>
       )}
 
-      <div className="grid min-h-[26rem] flex-1 shrink-0 gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <SplitPane
+        id="mission"
+        className="min-h-[26rem] flex-1 shrink-0"
+        initial={340}
+        min={280}
+        max={700}
+        left={
         <Panel
           title={
             <div className="flex items-center gap-1">
@@ -158,11 +172,11 @@ export default function MissionDetail() {
                   onChange={(e) => setShowReasoning(e.target.checked)}
                   className="accent-signal-500"
                 />
-                show reasoning
+                Show reasoning
               </label>
             ) : (
               <span className="text-[11px] text-ink-500">
-                {view === 'graph' ? 'click any node for its brief and its output' : 'click a step to see that stage'}
+                {view === 'graph' ? 'Click any node for its brief and its output' : 'Click a step to see that stage'}
               </span>
             )
           }
@@ -189,7 +203,8 @@ export default function MissionDetail() {
           )}
           {view === 'activity' && <ActivityFeed events={visibleEvents} live={isLive} />}
         </Panel>
-
+        }
+        right={
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto">
           <Panel title={`Fleet (${agents.length})`} dense>
             {agents.length === 0 ? (
@@ -203,8 +218,8 @@ export default function MissionDetail() {
                       <span className="truncate text-[13px] font-medium text-ink-100">
                         {a.agentType}
                       </span>
-                      <span className="ml-auto shrink-0 text-[11px] text-ink-400">
-                        {a.status === 'running' ? 'working' : relTime(a.finishedAt ?? a.startedAt)}
+                      <span className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-ink-400">
+                        <Elapsed startedAt={a.startedAt} finishedAt={a.finishedAt} />
                       </span>
                     </div>
                     {a.task && (
@@ -212,6 +227,9 @@ export default function MissionDetail() {
                         {a.task}
                       </div>
                     )}
+                    <div className="pl-4 text-[10px] text-ink-600">
+                      {a.status === 'running' ? 'Working now' : relTime(a.finishedAt ?? a.startedAt)}
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -238,7 +256,8 @@ export default function MissionDetail() {
             </Panel>
           )}
         </div>
-      </div>
+        }
+      />
 
       {/* Bounded on purpose. The page is a fixed-height flex column, so an
           unbounded summary - and they run to a screenful - pushed past the
@@ -294,7 +313,7 @@ function groupEvents(events: MissionEvent[]): Group[] {
   return out;
 }
 
-function Stat({ label, value, extra }: { label: string; value: string | number; extra?: string }) {
+function Stat({ label, value, extra }: { label: string; value: ReactNode; extra?: string }) {
   return (
     <span className="flex items-baseline gap-1.5">
       <span className="text-[10px] uppercase tracking-wide text-ink-500">{label}</span>
@@ -484,5 +503,41 @@ function ApprovalCard({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The mission id, as a reference you can copy rather than a bare token.
+ *
+ * It was printed as raw text in the middle of the metadata line, where it read
+ * as debug output - but it is the thing people quote to each other, so it earns
+ * a label and one-click copy instead of a careful double-click.
+ */
+function MissionRef({ id }: { id: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(id);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard blocked (insecure origin, or denied). The id is on screen.
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => void copy()}
+      title="Copy mission reference"
+      className="group inline-flex items-center gap-1.5 rounded-md border border-ink-700 bg-ink-900 px-2 py-0.5 transition-colors hover:border-ink-600"
+    >
+      <span className="text-[10px] uppercase tracking-wide text-ink-500">Ref</span>
+      <span className="font-mono text-[11px] text-ink-300">{id}</span>
+      <span className={`text-[10px] ${copied ? 'text-ok-400' : 'text-ink-600 group-hover:text-ink-400'}`}>
+        {copied ? 'copied' : 'copy'}
+      </span>
+    </button>
   );
 }

@@ -202,16 +202,40 @@ export const agentRuns = {
   },
 
   /** Fleet-wide utilisation, for the dashboard. */
-  async stats(): Promise<{ agentType: string; runs: number; succeeded: number }[]> {
+  /**
+   * Per-agent totals, including how long the agent typically takes.
+   *
+   * The average is computed here rather than in SQL because the two dialects
+   * subtract timestamps differently, and a portable expression for it is worse
+   * to read than the loop.
+   */
+  async stats(): Promise<
+    { agentType: string; runs: number; succeeded: number; avgMs: number }[]
+  > {
     const rows = await driver.query(
-      `SELECT agent_type AS "agentType", COUNT(*) AS runs,
-              SUM(CASE WHEN status = 'succeeded' THEN 1 ELSE 0 END) AS succeeded
-         FROM agent_runs GROUP BY agent_type`,
+      `SELECT agent_type AS "agentType", status, started_at, finished_at FROM agent_runs`,
     );
-    return rows.map((r: any) => ({
-      agentType: r.agentType,
-      runs: Number(r.runs),
-      succeeded: Number(r.succeeded ?? 0),
+
+    const by = new Map<string, { runs: number; succeeded: number; total: number; timed: number }>();
+    for (const r of rows as any[]) {
+      const entry = by.get(r.agentType) ?? { runs: 0, succeeded: 0, total: 0, timed: 0 };
+      entry.runs += 1;
+      if (r.status === 'succeeded') entry.succeeded += 1;
+      if (r.started_at && r.finished_at) {
+        const ms = new Date(r.finished_at).getTime() - new Date(r.started_at).getTime();
+        if (Number.isFinite(ms) && ms >= 0) {
+          entry.total += ms;
+          entry.timed += 1;
+        }
+      }
+      by.set(r.agentType, entry);
+    }
+
+    return [...by.entries()].map(([agentType, e]) => ({
+      agentType,
+      runs: e.runs,
+      succeeded: e.succeeded,
+      avgMs: e.timed ? Math.round(e.total / e.timed) : 0,
     }));
   },
 };

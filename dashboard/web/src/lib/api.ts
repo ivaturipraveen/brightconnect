@@ -182,7 +182,7 @@ export interface Analytics {
   byTrigger: Array<{ trigger: string; missions: number }>;
   agents: Array<{
     id: string; name: string; title: string; department: string;
-    runs: number; succeeded: number;
+    runs: number; succeeded: number; avgMs: number;
   }>;
   recent: Array<{
     id: string; title: string; kind: string; status: string;
