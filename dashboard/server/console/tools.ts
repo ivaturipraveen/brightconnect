@@ -11,6 +11,8 @@ import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { agentRuns, alerts, approvals, artifacts, missions } from '../db/index.ts';
 import { loadFleet } from '../agents/fleet.ts';
+import { Octokit } from '@octokit/rest';
+import { config, hasGithubToken } from '../config.ts';
 import type { MissionKind } from '../types.ts';
 
 const text = (s: string) => ({ content: [{ type: 'text' as const, text: s }] });
@@ -21,6 +23,10 @@ export interface ConsoleContext {
   /** Files the user attached to this conversation, already saved to disk. */
   attachments: Array<{ name: string; path: string; type: string }>;
 }
+
+/** Read-only GitHub client, or null when no token is configured. */
+const octokit = (): Octokit | null =>
+  hasGithubToken() ? new Octokit({ auth: config.github.token }) : null;
 
 export function createConsoleServer(ctx: ConsoleContext) {
   const listMissions = tool(
@@ -146,6 +152,79 @@ export function createConsoleServer(ctx: ConsoleContext) {
     },
   );
 
+  /**
+   * Read a ticket the person is referring to.
+   *
+   * Asked to "fix issue 6 and raise a PR" the console had no way to find out
+   * what issue 6 said, so it asked the person to paste the description back -
+   * which is exactly the work they were delegating. Read-only on purpose: the
+   * console dispatches missions, and everything that changes the outside world
+   * stays with the orchestrator behind the approval gates.
+   */
+  const readIssue = tool(
+    'read_issue',
+    'Read one GitHub issue by number, so you can write the brief from it. Use this whenever someone refers to an issue, a ticket or a number like "#6".',
+    {
+      number: z.number().int().positive().describe('The issue number, e.g. 6.'),
+    },
+    async ({ number }) => {
+      const gh = octokit();
+      if (!gh) {
+        return text('No GitHub token is configured, so issues cannot be read. Ask the person to paste the description.');
+      }
+      try {
+        const { data } = await gh.issues.get({
+          owner: config.github.owner,
+          repo: config.github.repo,
+          issue_number: number,
+        });
+        if (data.pull_request) {
+          return text(`#${number} is a pull request, not an issue: "${data.title}" (${data.html_url}).`);
+        }
+        const labels = (data.labels ?? [])
+          .map((l) => (typeof l === 'string' ? l : l.name))
+          .filter(Boolean)
+          .join(', ');
+        return text(
+          [
+            `Issue #${data.number} [${data.state}] ${data.title}`,
+            `Labels: ${labels || 'none'}`,
+            `URL: ${data.html_url}`,
+            '',
+            data.body?.trim() || '(no description)',
+          ].join('\n'),
+        );
+      } catch (err: any) {
+        if (err?.status === 404) {
+          return text(`Issue #${number} does not exist in ${config.github.owner}/${config.github.repo}.`);
+        }
+        return text(`Could not read issue #${number}: ${err?.message ?? String(err)}`);
+      }
+    },
+  );
+
+  const listOpenIssues = tool(
+    'list_open_issues',
+    'List the open issues in the repository, so you can find the one someone is describing without a number.',
+    {},
+    async () => {
+      const gh = octokit();
+      if (!gh) return text('No GitHub token is configured, so issues cannot be listed.');
+      const { data } = await gh.issues.listForRepo({
+        owner: config.github.owner,
+        repo: config.github.repo,
+        state: 'open',
+        per_page: 20,
+      });
+      const issues = data.filter((i) => !i.pull_request);
+      return text(
+        issues.length
+          ? issues.map((i) => `#${i.number} ${i.title}`).join('\n')
+          : 'No open issues.',
+      );
+    },
+  );
+
   const readAttachment = tool(
     'read_attachment',
     'Read a file the person attached to this conversation. Use it before answering questions about an attached document.',
@@ -168,6 +247,9 @@ export function createConsoleServer(ctx: ConsoleContext) {
     version: '1.0.0',
     instructions:
       'Read the platform state, and start missions when someone asks for work to be done.',
-    tools: [listMissions, describeMission, describeFleet, platformStatus, launchMission, readAttachment],
+    tools: [
+      listMissions, describeMission, describeFleet, platformStatus,
+      readIssue, listOpenIssues, launchMission, readAttachment,
+    ],
   });
 }

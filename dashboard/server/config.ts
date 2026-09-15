@@ -45,11 +45,14 @@ export const config = {
     /** Shared secret for webhook signatures. Unset means local development. */
     webhookSecret: process.env.GITHUB_WEBHOOK_SECRET ?? '',
     /**
-     * Only issues carrying this label are picked up. Deliberately not empty by
-     * default: pointed at a real repository, acting on every new issue would
-     * start a mission for each one. Set it empty to act on everything.
+     * Only issues carrying this label are picked up; empty means every issue.
+     *
+     * Empty by default: a person filing a ticket should not also have to know
+     * the magic label, and an issue that silently does nothing looks like a
+     * broken platform. Set it to a label when pointing this at a repository
+     * busy enough that acting on every issue would be wrong.
      */
-    triggerLabel: env('GITHUB_TRIGGER_LABEL', 'brightconnect'),
+    triggerLabel: env('GITHUB_TRIGGER_LABEL', ''),
     /** Seconds between polls. 0 disables polling. */
     pollSeconds: Number(env('GITHUB_POLL_SECONDS', '45')),
   },

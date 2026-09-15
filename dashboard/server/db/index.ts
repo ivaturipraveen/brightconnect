@@ -348,6 +348,21 @@ export const artifacts = {
     return { ...a, createdAt };
   },
 
+  /**
+   * Did the fleet open this pull request itself?
+   *
+   * Every PR the platform opens is recorded here with its URL, so this is the
+   * one self-check a branch name cannot defeat - and reviewing your own pull
+   * request is not a review, it is a loop that bills for itself.
+   */
+  async existsWithUrl(url: string): Promise<boolean> {
+    const rows = await driver.query(
+      `SELECT 1 AS found FROM artifacts WHERE url = ? LIMIT 1`,
+      [url],
+    );
+    return rows.length > 0;
+  },
+
   async listByMission(missionId: string): Promise<Artifact[]> {
     const rows = await driver.query(`SELECT * FROM artifacts WHERE mission_id = ? ORDER BY created_at ASC`, [missionId]);
     return rows.map(artifactFromRow);

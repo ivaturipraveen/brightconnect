@@ -18,7 +18,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Octokit } from '@octokit/rest';
 import { nanoid } from 'nanoid';
 import { config, hasGithubToken } from '../config.ts';
-import { inboundEvents, missions } from '../db/index.ts';
+import { artifacts, inboundEvents, missions } from '../db/index.ts';
 import { bus } from '../bus.ts';
 import type { MissionKind } from '../types.ts';
 
@@ -195,6 +195,24 @@ export async function dispatchEvent(
   trigger: 'github_webhook' | 'github_poll',
 ): Promise<DispatchResult> {
   if (await inboundEvents.seen(event.id)) return { status: 'duplicate' };
+
+  // Our own pull request, arriving back as work. The branch-name check in
+  // normalizeWebhook only catches PRs on a brightconnect/ branch, and the fleet
+  // names its branches after the feature.
+  const prUrl = (event.payload as any)?.html_url;
+  if (event.sourceRef.startsWith('pr#') && typeof prUrl === 'string' && await artifacts.existsWithUrl(prUrl)) {
+    await inboundEvents.record({
+      id: event.id,
+      source: 'github',
+      kind: event.kind,
+      sourceRef: event.sourceRef,
+      title: event.title,
+      payload: event.payload,
+      status: 'ignored',
+      note: 'Opened by the fleet itself',
+    });
+    return { status: 'ignored', note: 'the fleet opened this pull request' };
+  }
 
   await inboundEvents.record({
     id: event.id,
