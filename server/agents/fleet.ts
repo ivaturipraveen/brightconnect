@@ -47,6 +47,27 @@ Operating rules:
 - End with a short, scannable summary of what you found or produced.
 `.trim();
 
+/**
+ * Spell out the agent's exact tool names in its prompt.
+ *
+ * Without this the model guesses from the role and gets it wrong - during
+ * testing agents called `mcp__runbook__run_action` and
+ * `mcp__changemgmt__list_changes`, neither of which exists. Every wrong guess
+ * is a wasted turn and a confusing line in the activity feed.
+ */
+const toolManifest = (tools: string[]): string => {
+  const mcp = tools.filter((t) => t.startsWith('mcp__'));
+  const builtin = tools.filter((t) => !t.startsWith('mcp__'));
+  const lines: string[] = ['Your tools, by exact name - call them exactly as written:'];
+  for (const t of mcp) lines.push(`  ${t}`);
+  if (builtin.length) lines.push(`  built-in: ${builtin.join(', ')}`);
+  lines.push(
+    'These are the only tools you have. Do not guess at other names.',
+    'You can only read and write inside the mission workspace; platform state comes from the tools above, not the filesystem.',
+  );
+  return lines.join('\n');
+};
+
 const member = (
   id: string,
   name: string,
@@ -63,7 +84,7 @@ const member = (
   role,
   definition: {
     description,
-    prompt: `${prompt}\n\n${HOUSE_RULES}`,
+    prompt: `${prompt}\n\n${toolManifest(tools)}\n\n${HOUSE_RULES}`,
     tools,
     model: 'inherit',
     ...opts,

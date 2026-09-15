@@ -10,7 +10,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { Options, PermissionResult, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { nanoid } from 'nanoid';
 import { config, hasAnthropicKey } from '../config.ts';
 import { agentDefinitions, FLEET_BY_ID } from '../agents/fleet.ts';
@@ -29,6 +29,57 @@ const GATED_TOOLS = new Set([
   'mcp__github__open_pull_request',
   'mcp__runbook__execute_action',
 ]);
+
+/**
+ * Built-ins that have no place in a mission. Left enabled they burn turns and
+ * clutter the activity feed - agents reached for ListAgents and ToolSearch
+ * during testing, neither of which means anything here.
+ */
+const DISALLOWED_TOOLS = [
+  'ListAgents', 'SendMessage', 'ToolSearch', 'WebSearch', 'WebFetch',
+  'TaskOutput', 'TaskStop', 'KillShell', 'Artifact', 'Skill',
+  'EnterPlanMode', 'ExitPlanMode', 'CronCreate', 'CronList', 'CronDelete',
+];
+
+/** Tool inputs that name a filesystem path, by tool. */
+const PATH_FIELDS = ['file_path', 'path', 'notebook_path', 'cwd'];
+
+/**
+ * Confine filesystem tools to the mission workspace.
+ *
+ * Without this an agent can read the platform's own source. During testing the
+ * remediation engineer read `server/tools/runbook.ts` and grepped
+ * `server/sim/environment.ts` - the simulator, which contains the very root
+ * cause the fleet is supposed to establish from evidence. An agent that reads
+ * the answer out of our source has not diagnosed anything, and on screen it
+ * makes an honest demo look staged.
+ */
+function escapesWorkspace(
+  toolName: string,
+  input: Record<string, unknown>,
+  workspaceDir: string,
+): string | null {
+  const root = resolve(workspaceDir);
+
+  const outside = (candidate: string): boolean => {
+    const abs = isAbsolute(candidate) ? resolve(candidate) : resolve(root, candidate);
+    const rel = relative(root, abs);
+    return rel.startsWith('..') || isAbsolute(rel);
+  };
+
+  for (const field of PATH_FIELDS) {
+    const value = input[field];
+    if (typeof value === 'string' && value.trim() && outside(value)) return value;
+  }
+
+  // Bash can name paths anywhere in the command string.
+  if (toolName === 'Bash' && typeof input.command === 'string') {
+    for (const token of input.command.match(/(?:\/[\w.\-@+]+)+/g) ?? []) {
+      if (token.length > 4 && outside(token)) return token;
+    }
+  }
+  return null;
+}
 
 interface PendingApproval {
   resolve: (r: PermissionResult) => void;
@@ -184,6 +235,25 @@ export async function runMission(missionId: string): Promise<void> {
     toolName: string,
     input: Record<string, unknown>,
   ): Promise<PermissionResult> => {
+    const escaped = escapesWorkspace(toolName, input, workspaceDir);
+    if (escaped) {
+      bus.emitEvent({
+        missionId,
+        type: 'tool.result',
+        actor: 'system',
+        text: `Blocked ${toolName}: path outside the mission workspace (${escaped})`,
+        data: { blocked: true, toolName, path: escaped },
+      });
+      return {
+        behavior: 'deny',
+        message:
+          `Denied: ${escaped} is outside the mission workspace (${workspaceDir}). ` +
+          `You may only read and write inside the workspace. Everything you need about ` +
+          `the platform comes from the telemetry, changemgmt, runbook, and github tools - ` +
+          `use those rather than the filesystem.`,
+      };
+    }
+
     if (!GATED_TOOLS.has(toolName)) return { behavior: 'allow' };
 
     // Low-impact runbook actions do not need a human.
@@ -232,6 +302,7 @@ export async function runMission(missionId: string): Promise<void> {
     cwd: workspaceDir,
     // Keep the run isolated from whatever settings happen to exist on the host.
     settingSources: [],
+    disallowedTools: DISALLOWED_TOOLS,
     permissionMode: 'default',
     canUseTool,
     abortController: abort,
