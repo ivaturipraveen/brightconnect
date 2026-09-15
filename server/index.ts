@@ -191,7 +191,7 @@ app.get('/api/stream', (req, reply) => {
 
 /* ------------------------------------------------- static web build (prod) */
 
-const webDist = fileURLToPath(new URL('../../web/dist/', import.meta.url));
+const webDist = fileURLToPath(new URL('../dist/', import.meta.url));
 if (existsSync(webDist)) {
   await app.register(fastifyStatic, { root: webDist });
   // SPA fallback so client-side routes survive a refresh.

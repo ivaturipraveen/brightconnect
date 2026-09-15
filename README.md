@@ -35,11 +35,17 @@ Requires **Node 24+** (the app uses `node:sqlite`, so there is no native module 
 ```bash
 npm install
 cp .env.example .env     # then add your ANTHROPIC_API_KEY
+npm run preflight        # verifies the key, subagents, tools, GitHub
 npm run dev
 ```
 
 - Console: http://localhost:5173
 - API: http://localhost:8787
+
+`npm run preflight` is worth running before any demo. It confirms in about thirty
+seconds that the key authenticates, that a subagent spawns **and can reach the MCP
+tools it was scoped to**, and that the GitHub token has write access — the three
+things that are expensive to discover broken in front of an audience.
 
 ### Configuration
 
@@ -118,24 +124,35 @@ at real Cloud Monitoring and Cloud Logging changes those four handlers and nothi
 ## Layout
 
 ```
-apps/api/src/
+server/                  the API and the agent fleet
+  index.ts               REST + SSE
+  config.ts              all configuration, one place
+  db.ts                  SQLite schema and queries
+  bus.ts                 event fan-out to connected dashboards
   agents/fleet.ts        the 17 specialists
   orchestrator/
     run.ts               mission runner, stream translation, approval gate
     prompts.ts           orchestrator and mission briefs
   tools/                 MCP servers: telemetry, changemgmt, runbook, github
   sim/                   simulated environment and mutable incident state
-  db.ts                  SQLite schema and queries
-  index.ts               REST + SSE
 
-apps/web/src/
-  pages/                 Mission Control · Mission Detail · Fleet · Incidents · Governance
-  components/ui.tsx      shared primitives
-  lib/                   typed API client, SSE hook
+web/                     the console
+  index.html
+  src/
+    pages/               Mission Control · Mission Detail · Fleet · Incidents · Governance
+    components/ui.tsx    shared primitives
+    lib/                 typed API client, SSE hook
 
-infra/                   EC2 deployment
+scripts/preflight.ts     pre-demo check: key, subagents, tools, GitHub
+infra/                   EC2 deployment (systemd + nginx)
 docs/DEMO.md             the demo script
+data/                    SQLite database (gitignored)
+workspaces/              per-mission agent scratch space (gitignored)
+dist/                    built console (gitignored)
 ```
+
+One package, one `package.json`, one `npm install`. The server and the console
+share a dependency tree; `vite.config.ts` points at `web/` as its root.
 
 ---
 

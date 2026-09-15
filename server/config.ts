@@ -42,8 +42,8 @@ export const config = {
     // fileURLToPath, not URL.pathname: pathname percent-encodes, so a repo
     // checked out under a path containing a space silently writes to a
     // directory literally named "New%20POC".
-    data: fileURLToPath(new URL('../../../data/', import.meta.url)),
-    workspaces: fileURLToPath(new URL('../../../workspaces/', import.meta.url)),
+    data: fileURLToPath(new URL('../data/', import.meta.url)),
+    workspaces: fileURLToPath(new URL('../workspaces/', import.meta.url)),
   },
 } as const;
 

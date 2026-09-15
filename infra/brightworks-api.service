@@ -10,7 +10,7 @@ User=brightworks
 Group=brightworks
 WorkingDirectory=/opt/brightworks
 EnvironmentFile=/opt/brightworks/.env
-ExecStart=/usr/bin/npx tsx apps/api/src/index.ts
+ExecStart=/usr/bin/npx tsx server/index.ts
 
 # Keep the demo up: restart on any exit, but back off so a crash loop does not
 # spin the CPU during a meeting.

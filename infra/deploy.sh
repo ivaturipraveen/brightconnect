@@ -12,7 +12,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_DIR=/opt/brightworks
 
 echo "==> Building the console"
-( cd "$REPO_ROOT" && npm run build -w @brightconnect/web )
+( cd "$REPO_ROOT" && npm run build )
 
 echo "==> Syncing to $TARGET"
 rsync -az --delete \

@@ -11,8 +11,8 @@
  */
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { Octokit } from '@octokit/rest';
-import { config, hasAnthropicKey, hasGithubToken } from '../apps/api/src/config.ts';
-import { telemetryServer } from '../apps/api/src/tools/telemetry.ts';
+import { config, hasAnthropicKey, hasGithubToken } from '../server/config.ts';
+import { telemetryServer } from '../server/tools/telemetry.ts';
 
 const pass = (m: string) => console.log(`  \x1b[32m✓\x1b[0m ${m}`);
 const fail = (m: string) => console.log(`  \x1b[31m✗\x1b[0m ${m}`);
