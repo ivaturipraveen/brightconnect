@@ -75,6 +75,22 @@ export default function MissionDetail() {
   const visibleEvents = showReasoning ? events : events.filter((e) => e.type !== 'agent.thinking');
   const isLive = ['running', 'queued', 'awaiting_approval'].includes(mission.status);
 
+  /**
+   * What the orchestrator is doing, from its own narration.
+   *
+   * Its latest message is the plan in its own words, which is more useful than
+   * a fixed label - and it is already on the event trail, so nothing new has to
+   * be recorded to show it.
+   */
+  const orchestratorTask =
+    [...events]
+      .reverse()
+      .find((e) => e.actor === 'orchestrator' && e.type === 'agent.message' && e.text?.trim())
+      ?.text?.split('\n')
+      .find((line) => line.trim())
+      ?.slice(0, 220)
+    ?? (isLive ? 'Reading the brief and deciding who to engage' : 'Ran the mission and reported back');
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto pb-2">
       <header className="flex shrink-0 flex-wrap items-start justify-between gap-3">
@@ -207,11 +223,38 @@ export default function MissionDetail() {
         }
         right={
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
-          <Panel title={`Fleet (${agents.length})`} dense className="shrink-0">
+          {/* The orchestrator is the main thread, not a subagent, so it never
+              gets an agent_runs row and was absent from the one panel that
+              lists who is on the mission - the agent that received the brief
+              and chose everyone else was the only one you could not see. */}
+          <Panel title={`Fleet (${agents.length + 1})`} dense className="shrink-0">
+            <ul className="divide-y divide-ink-800">
+              <li className="border-l-2 border-think-400 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <StatusDot status={isLive ? 'running' : mission.status} />
+                  <span className="truncate text-[13px] font-medium text-ink-100">Ada</span>
+                  <span className="text-[11px] text-think-400">Orchestrator</span>
+                  <span className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-ink-400">
+                    <Elapsed
+                      startedAt={mission.startedAt ?? mission.createdAt}
+                      finishedAt={mission.finishedAt}
+                    />
+                  </span>
+                </div>
+                <div className="mt-0.5 line-clamp-2 pl-4 text-[11px] leading-snug text-ink-400">
+                  {orchestratorTask}
+                </div>
+                <div className="pl-4 text-[10px] text-ink-600">
+                  {isLive ? 'Planning and delegating' : statusLabel(mission.status)}
+                </div>
+              </li>
+            </ul>
             {agents.length === 0 ? (
-              <div className="p-4"><Empty>No specialists engaged yet.</Empty></div>
+              <div className="px-3 py-2 text-[11px] text-ink-500">
+                No specialists engaged yet.
+              </div>
             ) : (
-              <ul className="divide-y divide-ink-800">
+              <ul className="divide-y divide-ink-800 border-t border-ink-800">
                 {agents.map((a) => (
                   <li key={a.id} className="px-3 py-2">
                     <div className="flex items-center gap-2">
