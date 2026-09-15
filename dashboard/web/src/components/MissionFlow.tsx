@@ -3,23 +3,21 @@ import type { AgentRun, MissionEvent, MissionKind } from '../lib/api.ts';
 import { Badge, StatusDot, fmtDuration } from './ui.tsx';
 
 /**
- * The delegation flow: the request arrives at the orchestrator, which engages
- * specialists.
+ * How the work actually moved: the request arrives, the orchestrator decides
+ * what it is and who should do it, specialists run, each reports back.
  *
- * Agents are grouped into "waves" by how close together they were engaged.
- * That grouping is the whole point of the view - three investigators on one row
- * is the visible difference between concurrent work and a serial queue, and it
- * is the thing that is hard to convey in a text feed.
+ * Agents engaged within a few seconds of each other are drawn as one row,
+ * because concurrent and sequential work look identical in a list and the
+ * difference is the whole point.
  */
 
-/** Agents engaged within this window of each other count as concurrent. */
 const WAVE_WINDOW_MS = 4000;
 
-const INTAKE: Record<MissionKind, { title: string; subtitle: string }> = {
-  incident: { title: 'Alert received', subtitle: 'from monitoring' },
-  sdlc: { title: 'Specification received', subtitle: 'from the requester' },
-  ticket: { title: 'Ticket received', subtitle: 'from GitHub Issues' },
-  review: { title: 'Pull request opened', subtitle: 'from GitHub' },
+const INTAKE: Record<MissionKind, { title: string; from: string }> = {
+  incident: { title: 'Alert received', from: 'from monitoring' },
+  sdlc: { title: 'Task received', from: 'from the console' },
+  ticket: { title: 'Ticket received', from: 'from GitHub Issues' },
+  review: { title: 'Pull request opened', from: 'from GitHub' },
 };
 
 interface Props {
@@ -27,10 +25,13 @@ interface Props {
   events: MissionEvent[];
   missionKind: MissionKind;
   missionStatus: string;
+  missionInput: string;
 }
 
-export default function MissionFlow({ agents, events, missionKind, missionStatus }: Props) {
-  const [selected, setSelected] = useState<string | null>(null);
+export default function MissionFlow({
+  agents, events, missionKind, missionStatus, missionInput,
+}: Props) {
+  const [open, setOpen] = useState<string | null>(null);
 
   const waves = useMemo(() => {
     const sorted = [...agents].sort(
@@ -46,192 +47,177 @@ export default function MissionFlow({ agents, events, missionKind, missionStatus
     return out;
   }, [agents]);
 
-  const toolsFor = (agentType: string) =>
+  /** The orchestrator's own words - its plan, before it delegated anything. */
+  const plan = events.find(
+    (e) => e.type === 'agent.message' && e.actor === 'orchestrator' && (e.text ?? '').trim(),
+  )?.text;
+
+  const live = ['running', 'queued', 'awaiting_approval'].includes(missionStatus);
+  const toolCount = (agentType: string) =>
     events.filter((e) => e.type === 'tool.called' && e.actor === agentType).length;
 
-  const selectedAgent = agents.find((a) => a.id === selected);
-  const orchestratorBusy = ['running', 'queued', 'awaiting_approval'].includes(missionStatus);
-
   return (
-    <div className="p-4">
-      {/* ---- intake ---- */}
-      <Node
-        tone="intake"
-        title={INTAKE[missionKind].title}
-        subtitle={INTAKE[missionKind].subtitle}
-      />
-      <Connector />
+    <div className="space-y-0 p-4">
+      <Step index="1" title={INTAKE[missionKind].title} caption={INTAKE[missionKind].from}>
+        <p className="line-clamp-3 text-[12px] leading-relaxed text-ink-400">{missionInput}</p>
+      </Step>
 
-      {/* ---- orchestrator ---- */}
-      <Node
-        tone="orchestrator"
-        busy={orchestratorBusy}
+      <Link />
+
+      <Step
+        index="2"
         title="Orchestrator"
-        subtitle={
-          agents.length === 0
-            ? 'planning the mission…'
-            : `planned the work and engaged ${agents.length} specialist${agents.length === 1 ? '' : 's'}`
-        }
-      />
+        caption={agents.length === 0 ? 'working out what this is…' : 'decided the plan and who should do it'}
+        busy={live && agents.length === 0}
+        tone="think"
+      >
+        {plan ? (
+          <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-ink-300">
+            {plan.length > 420 ? plan.slice(0, 420) + '…' : plan}
+          </p>
+        ) : (
+          <p className="text-[12px] text-ink-500">Reading the request…</p>
+        )}
+      </Step>
 
-      {/* ---- waves of specialists ---- */}
       {waves.length === 0 ? (
         <>
-          <Connector />
-          <div className="mx-auto max-w-md rounded-lg border border-dashed border-ink-700 px-4 py-6 text-center text-[13px] text-ink-400">
-            No specialists engaged yet.
+          <Link />
+          <div className="rounded-lg border border-dashed border-ink-700 px-4 py-5 text-center text-[12px] text-ink-400">
+            No specialist engaged yet.
           </div>
         </>
       ) : (
         waves.map((wave, i) => (
           <div key={i}>
-            <Connector label={wave.length > 1 ? `${wave.length} in parallel` : undefined} />
-            <div
-              className={`grid gap-2.5 ${
-                wave.length === 1
-                  ? 'grid-cols-1 sm:max-w-md sm:mx-auto'
-                  : wave.length === 2
-                    ? 'sm:grid-cols-2'
-                    : 'sm:grid-cols-2 lg:grid-cols-3'
-              }`}
-            >
-              {wave.map((a) => (
-                <button
-                  key={a.id}
-                  onClick={() => setSelected(selected === a.id ? null : a.id)}
-                  className={`rounded-lg border px-3 py-2.5 text-left transition-colors ${
-                    selected === a.id
-                      ? 'border-signal-500 bg-ink-800'
-                      : a.status === 'running'
-                        ? 'border-signal-500/50 bg-ink-850 hover:bg-ink-800'
+            <Link label={wave.length > 1 ? `${wave.length} working in parallel` : 'delegated to'} />
+            <div className={`grid gap-2 ${wave.length > 1 ? 'sm:grid-cols-2' : ''}`}>
+              {wave.map((a) => {
+                const isOpen = open === a.id;
+                const ms =
+                  new Date(a.finishedAt ?? a.startedAt).getTime() - new Date(a.startedAt).getTime();
+                return (
+                  <div
+                    key={a.id}
+                    className={`rounded-lg border bg-ink-900 ${
+                      a.status === 'running'
+                        ? 'border-signal-500/50'
                         : a.status === 'failed'
-                          ? 'border-crit-500/40 bg-ink-850 hover:bg-ink-800'
-                          : 'border-ink-700 bg-ink-850 hover:bg-ink-800'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <StatusDot status={a.status} />
-                    <span className="truncate font-mono text-[12px] font-medium text-ink-100">
-                      {a.agentType}
-                    </span>
-                    <span className="ml-auto shrink-0 text-[10px] text-ink-500">
-                      {a.status === 'running'
-                        ? 'working'
-                        : fmtDuration(
-                            new Date(a.finishedAt ?? a.startedAt).getTime() -
-                              new Date(a.startedAt).getTime(),
-                          )}
-                    </span>
+                          ? 'border-crit-500/40'
+                          : 'border-ink-700'
+                    }`}
+                  >
+                    <button
+                      onClick={() => setOpen(isOpen ? null : a.id)}
+                      className="flex w-full items-start gap-2 px-3 py-2.5 text-left"
+                    >
+                      <StatusDot status={a.status} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-x-2">
+                          <span className="font-mono text-[12px] font-medium text-ink-100">
+                            {a.agentType}
+                          </span>
+                          <span className="text-[10px] text-ink-500">
+                            {a.status === 'running' ? 'working…' : fmtDuration(ms)}
+                            {toolCount(a.agentType) > 0 && ` · ${toolCount(a.agentType)} tool calls`}
+                          </span>
+                        </div>
+                        {a.task && (
+                          <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-ink-400">
+                            asked to: {a.task}
+                          </div>
+                        )}
+                      </div>
+                      <span className="mt-0.5 shrink-0 text-[10px] text-ink-500">
+                        {isOpen ? 'hide' : 'output'}
+                      </span>
+                    </button>
+
+                    {isOpen && (
+                      <div className="border-t border-ink-700 px-3 py-2.5">
+                        <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-ink-500">
+                          Reported back
+                        </div>
+                        <pre className="max-h-72 overflow-auto whitespace-pre-wrap font-sans text-[12px] leading-relaxed text-ink-300">
+                          {a.result?.trim() || (a.status === 'running' ? 'Still working…' : 'Nothing returned.')}
+                        </pre>
+                      </div>
+                    )}
                   </div>
-                  {a.task && (
-                    <div className="mt-1 line-clamp-2 text-[11px] leading-snug text-ink-400">
-                      {a.task}
-                    </div>
-                  )}
-                  <div className="mt-1.5 text-[10px] text-ink-500">
-                    {toolsFor(a.agentType)} tool call{toolsFor(a.agentType) === 1 ? '' : 's'}
-                  </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         ))
       )}
 
-      {/* ---- outcome ---- */}
       {['succeeded', 'failed', 'cancelled'].includes(missionStatus) && (
         <>
-          <Connector />
-          <Node
-            tone={missionStatus === 'succeeded' ? 'done' : 'failed'}
+          <Link />
+          <Step
+            index="✓"
             title={
               missionStatus === 'succeeded'
-                ? 'Mission complete'
+                ? 'Done'
                 : missionStatus === 'cancelled'
-                  ? 'Cancelled by operator'
-                  : 'Mission failed'
+                  ? 'Cancelled'
+                  : 'Failed'
             }
-            subtitle={missionStatus === 'succeeded' ? 'results below' : undefined}
+            caption={missionStatus === 'succeeded' ? 'outcome below' : undefined}
+            tone={missionStatus === 'succeeded' ? 'ok' : 'crit'}
           />
         </>
       )}
-
-      {/* ---- selected agent detail ---- */}
-      {selectedAgent && (
-        <div className="mt-4 rounded-lg border border-signal-500/40 bg-ink-850 p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="info">{selectedAgent.agentType}</Badge>
-            <Badge tone={selectedAgent.status === 'succeeded' ? 'ok' : selectedAgent.status === 'failed' ? 'crit' : 'info'}>
-              {selectedAgent.status}
-            </Badge>
-            <button
-              onClick={() => setSelected(null)}
-              className="ml-auto text-[11px] text-ink-400 hover:text-ink-200"
-            >
-              close
-            </button>
-          </div>
-          {selectedAgent.task && (
-            <div className="mt-2">
-              <div className="text-[10px] font-medium uppercase tracking-wide text-ink-500">
-                Assigned
-              </div>
-              <div className="mt-0.5 text-[12px] text-ink-200">{selectedAgent.task}</div>
-            </div>
-          )}
-          <div className="mt-2">
-            <div className="text-[10px] font-medium uppercase tracking-wide text-ink-500">
-              Reported back
-            </div>
-            <pre className="mt-0.5 max-h-72 overflow-auto whitespace-pre-wrap font-sans text-[12px] leading-relaxed text-ink-300">
-              {selectedAgent.result?.trim() || 'Still working…'}
-            </pre>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-function Connector({ label }: { label?: string }) {
+function Link({ label }: { label?: string }) {
   return (
-    <div className="flex flex-col items-center py-1.5">
-      <div className="h-4 w-px bg-ink-600" />
+    <div className="flex items-center gap-2 py-1.5 pl-[13px]">
+      <div className="h-6 w-px bg-ink-600" />
       {label && (
-        <span className="my-1 rounded-full border border-signal-500/30 bg-signal-500/10 px-2 py-0.5 text-[10px] font-medium text-signal-300">
+        <Badge tone="info" className="ml-1">
           {label}
-        </span>
+        </Badge>
       )}
-      <div className="h-4 w-px bg-ink-600" />
-      <svg width="9" height="6" viewBox="0 0 9 6" className="-mt-px" aria-hidden>
-        <path d="M4.5 6L0 0h9z" className="fill-ink-600" />
-      </svg>
     </div>
   );
 }
 
-function Node({
-  title, subtitle, tone, busy,
+function Step({
+  index, title, caption, children, busy, tone = 'neutral',
 }: {
+  index: string;
   title: string;
-  subtitle?: string;
-  tone: 'intake' | 'orchestrator' | 'done' | 'failed';
+  caption?: string;
+  children?: React.ReactNode;
   busy?: boolean;
+  tone?: 'neutral' | 'think' | 'ok' | 'crit';
 }) {
-  const styles = {
-    intake: 'border-ink-600 bg-ink-850',
-    orchestrator: 'border-think-400/50 bg-think-400/10',
-    done: 'border-ok-500/50 bg-ok-500/10',
-    failed: 'border-crit-500/50 bg-crit-500/10',
-  };
+  const ring = {
+    neutral: 'border-ink-600 text-ink-400',
+    think: 'border-think-400/50 text-think-400',
+    ok: 'border-ok-500/50 text-ok-400',
+    crit: 'border-crit-500/50 text-crit-400',
+  }[tone];
+
   return (
-    <div
-      className={`mx-auto max-w-md rounded-lg border px-4 py-2.5 text-center ${styles[tone]} ${
-        busy ? 'pulse-ring' : ''
-      }`}
-    >
-      <div className="text-[13px] font-semibold text-ink-100">{title}</div>
-      {subtitle && <div className="mt-0.5 text-[11px] text-ink-400">{subtitle}</div>}
+    <div className="flex gap-2.5">
+      <span
+        className={`mt-0.5 grid h-[26px] w-[26px] shrink-0 place-items-center rounded-full border bg-ink-900 text-[11px] font-semibold ${ring} ${
+          busy ? 'pulse-ring' : ''
+        }`}
+      >
+        {index}
+      </span>
+      <div className="min-w-0 flex-1 rounded-lg border border-ink-700 bg-ink-900 px-3 py-2.5">
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          <span className="text-[13px] font-semibold text-ink-100">{title}</span>
+          {caption && <span className="text-[11px] text-ink-400">{caption}</span>}
+        </div>
+        {children && <div className="mt-1.5">{children}</div>}
+      </div>
     </div>
   );
 }

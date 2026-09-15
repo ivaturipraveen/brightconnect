@@ -167,6 +167,7 @@ export default function MissionDetail() {
               events={events}
               missionKind={mission.kind}
               missionStatus={mission.status}
+              missionInput={mission.input}
             />
           ) : (
             <ActivityFeed events={visibleEvents} live={isLive} />
