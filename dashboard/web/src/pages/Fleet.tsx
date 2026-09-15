@@ -48,10 +48,10 @@ export default function Fleet() {
     setTimeout(() => setNote(null), 5000);
   };
 
-  const changePlatformModel = async (alias: string) => {
+  const changePlatformModel = async (model: string) => {
     setBusy(true);
     try {
-      const res = await api.setPlatformModel(alias);
+      const res = await api.setPlatformModel(model);
       flash(`The fleet now runs on ${res.alias}. Applies to the next mission.`);
       load();
     } catch (err) {
@@ -65,64 +65,54 @@ export default function Fleet() {
 
   return (
     <div className="h-full space-y-5 overflow-y-auto pb-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
           <h1 className="text-xl font-semibold text-ink-100">Agent fleet</h1>
-          <p className="mt-0.5 max-w-3xl text-[13px] text-ink-400">
+          <p className="mt-0.5 max-w-2xl text-[13px] text-ink-400">
             Twenty agents: one orchestrator that decides, and nineteen specialists that do the
             work. Each has its own instructions, its own tools, and a scope it cannot exceed.
             Open an agent to change what it does and what it can reach. Edits apply to the next
             mission — a running one keeps the definitions it started with.
           </p>
         </div>
-        {note && <Badge tone="ok">{note}</Badge>}
+
+        {/* One setting for the whole application, as a labelled control rather
+            than three cards: it is chosen rarely and read often, so it should
+            state what is running without taking a panel to do it. */}
+        <div className="shrink-0 rounded-xl border border-ink-700 bg-ink-900 px-3.5 py-2.5">
+          <label
+            htmlFor="platform-model"
+            className="block text-[11px] font-medium uppercase tracking-wide text-ink-400"
+          >
+            Model
+          </label>
+          <select
+            id="platform-model"
+            value={models?.model ?? ''}
+            disabled={!models || busy}
+            onChange={(e) => void changePlatformModel(e.target.value)}
+            className="mt-1 w-full min-w-[190px] rounded-md border border-ink-600 bg-ink-850 px-2.5 py-1.5 text-[13px] font-medium text-ink-100 focus:border-signal-500 focus:outline-none disabled:opacity-50"
+          >
+            {!models && <option value="">Loading…</option>}
+            {models?.choices.map((c) => (
+              <option key={c.alias} value={c.id}>{c.label}</option>
+            ))}
+          </select>
+          <p className="mt-1.5 max-w-[230px] text-[11px] leading-snug text-ink-500">
+            {busy
+              ? 'Saving…'
+              : current
+                ? current.hint
+                : 'Runs the orchestrator and all nineteen specialists.'}
+          </p>
+        </div>
       </div>
 
-      {/* One model for the platform. */}
-      <Panel
-        title="Model"
-        actions={<span className="text-[11px] text-ink-500">one setting, all 20 agents</span>}
-        dense
-      >
-        {!models ? (
-          <div className="p-4"><Empty>Loading…</Empty></div>
-        ) : (
-          <div className="px-4 py-3">
-            <div className="flex flex-wrap gap-2">
-              {models.choices.map((c) => {
-                const active = c.id === models.model;
-                return (
-                  <button
-                    key={c.alias}
-                    type="button"
-                    disabled={busy || active}
-                    onClick={() => void changePlatformModel(c.alias)}
-                    className={`min-w-[190px] flex-1 rounded-lg border px-3 py-2.5 text-left transition ${
-                      active
-                        ? 'border-signal-500 bg-signal-500/10'
-                        : 'border-ink-700 bg-ink-850 hover:border-ink-600 disabled:opacity-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className={`text-[13px] font-semibold ${active ? 'text-signal-300' : 'text-ink-100'}`}>
-                        {c.label}
-                      </span>
-                      {active && <Badge tone="ok">in use</Badge>}
-                    </div>
-                    <div className="mt-1 text-[11px] leading-snug text-ink-400">{c.hint}</div>
-                  </button>
-                );
-              })}
-            </div>
-            <p className="mt-2.5 text-[11px] leading-relaxed text-ink-500">
-              The orchestrator and all nineteen specialists run on{' '}
-              <span className="font-mono text-ink-300">{current?.label ?? models.model}</span>.
-              One model for the whole application — this is the setting Claude Code itself uses,
-              so the fleet behaves the same way from the CLI. Saved, so it survives a restart.
-            </p>
-          </div>
-        )}
-      </Panel>
+      {note && (
+        <div className="rounded-lg border border-ok-500/30 bg-ok-500/10 px-3 py-2 text-[12px] text-ok-400">
+          {note}
+        </div>
+      )}
 
       {/* The orchestrator is not one of the fleet - it is what decides which of
           them to engage - but leaving it off the roster made the thing doing

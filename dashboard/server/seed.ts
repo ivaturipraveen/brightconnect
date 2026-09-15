@@ -90,3 +90,80 @@ export async function resetIncident() {
     await alerts.setStatus(a.id, 'firing');
   }
 }
+
+/**
+ * Wipe the operating history: every mission and everything hanging off one.
+ *
+ * Kept separate from the simulated environment on purpose. The alerts and the
+ * change log are the world the fleet investigates - they are scenery, and
+ * clearing them would leave the incident demo with nothing to find. What goes
+ * is the record of what the fleet *did*: missions, the agent runs inside them,
+ * the event trail, approvals, artifacts and the inbound GitHub events that
+ * triggered them.
+ *
+ * The settings table survives too, so a cleared platform keeps the model it was
+ * set to.
+ */
+export async function clearHistory(): Promise<Record<string, number>> {
+  const driver = db();
+  const counts: Record<string, number> = {};
+
+  // Children first: approvals and runs reference a mission.
+  const tables = ['approvals', 'artifacts', 'agent_runs', 'events', 'inbound_events', 'missions'];
+  for (const table of tables) {
+    const [{ n }] = await driver.query<{ n: string | number }>(`SELECT COUNT(*) AS n FROM ${table}`);
+    counts[table] = Number(n);
+    await driver.run(`DELETE FROM ${table}`);
+  }
+
+  // The files those records pointed at: generated documents, console uploads
+  // and mission workspaces. Leaving them would mean a "cleared" platform still
+  // has gigabytes of somebody else's work on disk.
+  for (const dir of [join(config.paths.data, 'documents'), join(config.paths.data, 'uploads'), config.paths.workspaces]) {
+    try {
+      let removed = 0;
+      for (const entry of readdirSync(dir)) {
+        rmSync(join(dir, entry), { recursive: true, force: true });
+        removed++;
+      }
+      counts[dir.replace(config.paths.data, 'data/')] = removed;
+    } catch {
+      /* directory was never created */
+    }
+  }
+
+  return counts;
+}
+
+/**
+ * Record the tickets that are open right now as already handled.
+ *
+ * Clearing history wipes the dedup ledger along with everything else, and the
+ * poll id is stable per issue - so the next poll re-dispatches every open
+ * ticket the fleet has already worked. Thirty seconds after clearing the board
+ * for a demo, a mission nobody asked for appears on it.
+ *
+ * Marking them ignored draws the line at the clear: work already done stays
+ * done, and a ticket filed afterwards still triggers normally.
+ */
+export async function markOpenIntakeAsSeen(): Promise<number> {
+  const { pollGitHub } = await import('./events/github.ts');
+  const { inboundEvents } = await import('./db/index.ts');
+
+  let marked = 0;
+  for (const event of await pollGitHub()) {
+    if (await inboundEvents.seen(event.id)) continue;
+    await inboundEvents.record({
+      id: event.id,
+      source: 'github',
+      kind: event.kind,
+      sourceRef: event.sourceRef,
+      title: event.title,
+      payload: event.payload,
+      status: 'ignored',
+      note: 'Open before the history was cleared',
+    });
+    marked++;
+  }
+  return marked;
+}

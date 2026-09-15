@@ -17,6 +17,7 @@
     "build": "vite build --config dashboard/vite.config.ts && npm run build --prefix product/frontend",
     "start": "tsx --env-file-if-exists=.env dashboard/server/index.ts",
     "preflight": "tsx --env-file-if-exists=.env ops/preflight.ts",
+    "clear": "tsx --env-file-if-exists=.env ops/clear-history.ts",
     "install:all": "npm install && npm install --prefix product/backend && npm install --prefix product/frontend",
     "typecheck": "tsc --noEmit -p dashboard/tsconfig.json && tsc --noEmit -p dashboard/tsconfig.web.json && npm run typecheck --prefix product/backend && npm run typecheck --prefix product/frontend",
     "test": "npm test --prefix product/backend",

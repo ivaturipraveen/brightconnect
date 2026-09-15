@@ -10,6 +10,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { Options, PermissionResult, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { provisionWorkspace } from '../workspace.ts';
+import { mkdirSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { nanoid } from 'nanoid';
@@ -66,6 +67,20 @@ const PATH_FIELDS = ['file_path', 'path', 'notebook_path', 'cwd'];
  * and killed its own mission. Agents are supposed to build in their workspace,
  * and the workspace is what becomes the pull request.
  */
+/**
+ * Where npm may write while a mission runs.
+ *
+ * Outside the workspace so it survives between missions, inside the sandbox's
+ * allowWrite so npm can actually use it.
+ */
+const NPM_CACHE_DIR = join(config.paths.data, 'npm-cache');
+mkdirSync(NPM_CACHE_DIR, { recursive: true });
+
+/** Paths a shell names that are devices, not files in the workspace. */
+const SHELL_DEVICES = new Set([
+  '/dev/null', '/dev/zero', '/dev/stdin', '/dev/stdout', '/dev/stderr', '/dev/tty', '/dev/urandom',
+]);
+
 function escapesWorkspace(
   toolName: string,
   input: Record<string, unknown>,
@@ -94,6 +109,12 @@ function escapesWorkspace(
     for (const token of command.match(/\/(?:[\w.\-@+]|\/| (?=[\w.\-@+]))+/g) ?? []) {
       const candidate = token.trim();
       if (candidate.length <= 4) continue;
+      // Character devices are not the filesystem. `2>/dev/null` is in half the
+      // shell commands anyone writes, and denying it stopped the QA agent from
+      // running the test suite at all. The first-segment check matters because
+      // the pattern above tolerates spaces inside a path - so `> /dev/null 2>&1`
+      // arrives here as the single token "/dev/null 2".
+      if (SHELL_DEVICES.has(candidate) || SHELL_DEVICES.has(candidate.split(' ')[0])) continue;
       // A truncated match that the workspace path starts with is not an escape.
       if (root.startsWith(candidate)) continue;
       if (outside(candidate)) return candidate;
@@ -258,7 +279,11 @@ export async function runMission(missionId: string): Promise<void> {
     failIfUnavailable: true,
     autoAllowBashIfSandboxed: true,
     filesystem: {
-      allowWrite: [workspaceDir],
+      // The npm cache is shared across missions on purpose: per-workspace it
+      // would re-download the dependency tree every run, and without it npm
+      // cannot write at all - `npm ci` fails EPERM on the user's ~/.npm and the
+      // QA agent never gets to run the tests, which is most of what it is for.
+      allowWrite: [workspaceDir, NPM_CACHE_DIR],
       denyWrite: [projectRoot],
     },
   };
@@ -286,7 +311,13 @@ export async function runMission(missionId: string): Promise<void> {
         runbook: createRunbookServer({ missionId, actor: 'orchestrator' }),
       github: createGithubServer({ missionId, workspaceDir, actor: 'orchestrator' }),
     },
-    env: { ...process.env, ANTHROPIC_API_KEY: config.anthropic.apiKey },
+    env: {
+      ...process.env,
+      ANTHROPIC_API_KEY: config.anthropic.apiKey,
+      // Point npm at the cache the sandbox allows, so an agent never has to
+      // discover the problem and invent a --cache flag of its own.
+      npm_config_cache: NPM_CACHE_DIR,
+    },
   };
 
   const prompt =
