@@ -833,6 +833,19 @@ if (hasGithubToken() && config.github.pollSeconds > 0) {
   void tick();
 }
 
+/**
+ * Keep pruning, not just at boot.
+ *
+ * Each mission leaves a workspace behind, and the prune only ran at startup -
+ * fine while deploys were frequent, wrong for a box meant to run for weeks,
+ * where they accumulate until the disk is the thing that stops the platform.
+ */
+setInterval(() => {
+  void pruneWorkspaces()
+    .then((n) => { if (n > 0) app.log.info({ pruned: n }, 'pruned old mission workspaces'); })
+    .catch((err) => app.log.warn({ err }, 'workspace prune failed'));
+}, 6 * 60 * 60 * 1000).unref();
+
 const banner = [
   ``,
   `  ${config.productName} API listening on http://localhost:${config.port}`,

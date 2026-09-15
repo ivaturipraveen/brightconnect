@@ -39,6 +39,33 @@ const HISTORY_KEY = 'brightconnect.console.turns';
 const DRAFT_KEY = 'brightconnect.console.draft';
 const LOG_KEY = 'brightconnect.console.log';
 
+/**
+ * How much of the stream is kept, and what gets dropped first.
+ *
+ * A single mission emits a couple of hundred tool calls, so a flat cap threw
+ * away the conversation - what you asked and what came back - to make room for
+ * another `tool.result`. The conversation is the part nobody can reconstruct,
+ * so it is kept to the ceiling and the machine noise is trimmed under it.
+ */
+const KEEP_TOTAL = 4000;
+const KEEP_STORED = 1500;
+const NOISE: ReadonlySet<TerminalLine['kind']> = new Set(['tool', 'result', 'system', 'thinking']);
+
+function append(lines: TerminalLine[], line: TerminalLine): TerminalLine[] {
+  const next = [...lines, line];
+  if (next.length <= KEEP_TOTAL) return next;
+
+  // Over the ceiling: drop the oldest noise first, and only start on the
+  // conversation once there is no noise left to give.
+  let excess = next.length - KEEP_TOTAL;
+  const kept: TerminalLine[] = [];
+  for (const l of next) {
+    if (excess > 0 && NOISE.has(l.kind)) { excess -= 1; continue; }
+    kept.push(l);
+  }
+  return excess > 0 ? kept.slice(excess) : kept;
+}
+
 function loadLog(): TerminalLine[] {
   try {
     const raw = sessionStorage.getItem(LOG_KEY);
@@ -78,7 +105,7 @@ export default function Console() {
 
   /** One line on the execution stream. */
   const emit = (kind: TerminalLine['kind'], text: string, detail?: string) =>
-    setLog((prev) => [...prev.slice(-500), { at: Date.now(), kind, text, detail }]);
+    setLog((prev) => append(prev, { at: Date.now(), kind, text, detail }));
 
   const loadOverview = () => void api.overview().then(setOverview).catch(() => {});
   useEffect(() => {
@@ -117,7 +144,7 @@ export default function Console() {
   // The terminal is the transcript now, so it has to survive a refresh too.
   useEffect(() => {
     try {
-      sessionStorage.setItem(LOG_KEY, JSON.stringify(log.slice(-400)));
+      sessionStorage.setItem(LOG_KEY, JSON.stringify(log.slice(-KEEP_STORED)));
     } catch {
       /* storage full or disabled */
     }
@@ -220,17 +247,17 @@ export default function Console() {
             emit('result', e.text.length > 600 ? `${e.text.slice(0, 600)}…` : e.text);
           } else if (e.type === 'mission' && e.missionId) {
             patch((t) => ({ ...t, missionIds: [...(t.missionIds ?? []), e.missionId!] }));
-            setLog((prev) => [...prev.slice(-500), {
+            setLog((prev) => append(prev, {
               at: Date.now(), kind: 'mission',
               text: `mission ${e.missionId} started`, href: `/missions/${e.missionId}`,
-            }]);
+            }));
             loadOverview();
           } else if (e.type === 'document' && e.document) {
             patch((t) => ({ ...t, documents: [...(t.documents ?? []), e.document!] }));
-            setLog((prev) => [...prev.slice(-500), {
+            setLog((prev) => append(prev, {
               at: Date.now(), kind: 'document',
               text: e.document!.name, href: e.document!.url,
-            }]);
+            }));
           } else if (e.type === 'done') {
             patch((t) => ({ ...t, cost: e.cost }));
             if (e.cost) emit('system', `done · $${e.cost.toFixed(4)}`);

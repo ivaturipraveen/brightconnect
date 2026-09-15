@@ -66,8 +66,23 @@ export default function TerminalLog({ lines, live }: { lines: TerminalLine[]; li
     <div ref={scrollRef} className="h-full overflow-y-auto bg-ink-950/60 px-3 py-3 font-mono text-[12px] leading-relaxed">
       {lines.map((l, i) => {
         const style = STYLE[l.kind];
+        // What you asked and what came back is the conversation; the rest is
+        // the machine working. Give the first more room so it stays findable
+        // in a stream that is mostly the second.
+        const conversation = l.kind === 'prompt' || l.kind === 'text';
         return (
-          <div key={i} className="flex gap-2 py-px">
+          <div
+            key={i}
+            className={
+              conversation
+                ? `my-1.5 flex gap-2 rounded border-l-2 py-1.5 pl-2 pr-1 ${
+                    l.kind === 'prompt'
+                      ? 'border-signal-500 bg-signal-500/[0.06]'
+                      : 'border-ink-600 bg-ink-900/70'
+                  }`
+                : 'flex gap-2 py-px'
+            }
+          >
             <span className="shrink-0 select-none text-ink-600">{clock(l.at)}</span>
             <span className={`shrink-0 select-none ${style.className}`}>{style.marker}</span>
             <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">
@@ -81,7 +96,9 @@ export default function TerminalLog({ lines, live }: { lines: TerminalLine[]; li
                   {l.text}
                 </a>
               ) : (
-                <span className={style.className}>{l.text}</span>
+                <span className={`${style.className} ${conversation ? 'text-[12.5px]' : ''}`}>
+                  {l.text}
+                </span>
               )}
               {l.detail && <span className="text-ink-500"> {l.detail}</span>}
             </span>
