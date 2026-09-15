@@ -84,9 +84,19 @@ export default function MissionDetail() {
             <span className="truncate">{mission.title}</span>
           </h1>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-ink-400">
-            <Badge tone={mission.kind === 'incident' ? 'crit' : 'info'}>
-              {mission.kind === 'incident' ? 'incident response' : 'software delivery'}
+            <Badge tone={mission.kind === 'incident' ? 'crit' : mission.kind === 'ticket' ? 'think' : mission.kind === 'review' ? 'ok' : 'info'}>
+              {{
+                incident: 'incident response',
+                sdlc: 'software delivery',
+                ticket: 'ticket resolution',
+                review: 'pull request review',
+              }[mission.kind]}
             </Badge>
+            {mission.sourceRef && (
+              <Badge tone="neutral">
+                <span className="font-mono">{mission.sourceRef}</span>
+              </Badge>
+            )}
             <Badge tone={mission.status === 'failed' ? 'crit' : mission.status === 'succeeded' ? 'ok' : 'warn'}>
               {mission.status.replace('_', ' ')}
             </Badge>

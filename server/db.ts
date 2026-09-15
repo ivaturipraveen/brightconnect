@@ -25,6 +25,8 @@ db.exec(`
     input         TEXT NOT NULL,
     status        TEXT NOT NULL,
     alert_id      TEXT,
+    trigger       TEXT NOT NULL DEFAULT 'manual',
+    source_ref    TEXT,
     session_id    TEXT,
     summary       TEXT,
     error         TEXT,
@@ -89,6 +91,23 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_artifacts_mission ON artifacts(mission_id);
 
+  /* Inbound events from GitHub. Deduplicated by delivery id so a webhook
+     redelivery, or a poll overlapping a webhook, cannot start the same work
+     twice. */
+  CREATE TABLE IF NOT EXISTS inbound_events (
+    id          TEXT PRIMARY KEY,
+    source      TEXT NOT NULL,
+    kind        TEXT NOT NULL,
+    source_ref  TEXT NOT NULL,
+    title       TEXT,
+    payload     TEXT NOT NULL,
+    mission_id  TEXT,
+    status      TEXT NOT NULL,
+    note        TEXT,
+    received_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_inbound_ref ON inbound_events(source_ref);
+
   CREATE TABLE IF NOT EXISTS alerts (
     id          TEXT PRIMARY KEY,
     severity    TEXT NOT NULL,
@@ -104,6 +123,20 @@ db.exec(`
   );
 `);
 
+/**
+ * Add columns that arrived after a database was first created.
+ * CREATE TABLE IF NOT EXISTS silently leaves an existing table alone, so a
+ * database from an earlier build needs these filled in explicitly.
+ */
+function addColumnIfMissing(table: string, column: string, definition: string) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (cols.some((c) => c.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
+addColumnIfMissing('missions', 'trigger', "TEXT NOT NULL DEFAULT 'manual'");
+addColumnIfMissing('missions', 'source_ref', 'TEXT');
+
 export const now = () => new Date().toISOString();
 
 /* ---------------------------------------------------------------- missions */
@@ -115,6 +148,8 @@ const missionFromRow = (r: any): Mission => ({
   input: r.input,
   status: r.status,
   alertId: r.alert_id,
+  trigger: r.trigger ?? 'manual',
+  sourceRef: r.source_ref,
   sessionId: r.session_id,
   summary: r.summary,
   error: r.error,
@@ -129,12 +164,31 @@ const missionFromRow = (r: any): Mission => ({
 });
 
 export const missions = {
-  create(m: Pick<Mission, 'id' | 'kind' | 'title' | 'input'> & { alertId?: string | null }) {
+  create(
+    m: Pick<Mission, 'id' | 'kind' | 'title' | 'input'> & {
+      alertId?: string | null;
+      trigger?: Mission['trigger'];
+      sourceRef?: string | null;
+    },
+  ) {
     db.prepare(
-      `INSERT INTO missions (id, kind, title, input, status, alert_id, created_at)
-       VALUES (?, ?, ?, ?, 'queued', ?, ?)`,
-    ).run(m.id, m.kind, m.title, m.input, m.alertId ?? null, now());
+      `INSERT INTO missions (id, kind, title, input, status, alert_id, trigger, source_ref, created_at)
+       VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?)`,
+    ).run(
+      m.id, m.kind, m.title, m.input, m.alertId ?? null,
+      m.trigger ?? 'manual', m.sourceRef ?? null, now(),
+    );
     return this.get(m.id)!;
+  },
+
+  /** Is there already a live mission answering this external reference? */
+  activeForSource(sourceRef: string): Mission | undefined {
+    const r = db.prepare(
+      `SELECT * FROM missions
+        WHERE source_ref = ? AND status IN ('queued','running','awaiting_approval')
+        ORDER BY created_at DESC LIMIT 1`,
+    ).get(sourceRef);
+    return r ? missionFromRow(r) : undefined;
   },
 
   get(id: string): Mission | undefined {
@@ -371,6 +425,69 @@ export const artifacts = {
       .prepare(`SELECT * FROM artifacts ORDER BY created_at DESC LIMIT ?`)
       .all(limit)
       .map(artifactFromRow);
+  },
+};
+
+/* --------------------------------------------------------- inbound events */
+
+export interface InboundEvent {
+  id: string;
+  source: 'github';
+  kind: string;
+  sourceRef: string;
+  title?: string | null;
+  payload: unknown;
+  missionId?: string | null;
+  status: 'received' | 'dispatched' | 'ignored' | 'duplicate';
+  note?: string | null;
+  receivedAt: string;
+}
+
+const inboundFromRow = (r: any): InboundEvent => ({
+  id: r.id,
+  source: r.source,
+  kind: r.kind,
+  sourceRef: r.source_ref,
+  title: r.title,
+  payload: r.payload ? JSON.parse(r.payload) : null,
+  missionId: r.mission_id,
+  status: r.status,
+  note: r.note,
+  receivedAt: r.received_at,
+});
+
+export const inboundEvents = {
+  /** Returns false if this delivery id has already been seen. */
+  record(e: Omit<InboundEvent, 'receivedAt'>): boolean {
+    const existing = db.prepare(`SELECT id FROM inbound_events WHERE id = ?`).get(e.id);
+    if (existing) return false;
+    db.prepare(
+      `INSERT INTO inbound_events (id, source, kind, source_ref, title, payload, mission_id, status, note, received_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      e.id, e.source, e.kind, e.sourceRef, e.title ?? null,
+      JSON.stringify(e.payload), e.missionId ?? null, e.status, e.note ?? null, now(),
+    );
+    return true;
+  },
+
+  attachMission(id: string, missionId: string) {
+    db.prepare(`UPDATE inbound_events SET mission_id = ?, status = 'dispatched' WHERE id = ?`)
+      .run(missionId, id);
+  },
+
+  setStatus(id: string, status: InboundEvent['status'], note?: string) {
+    db.prepare(`UPDATE inbound_events SET status = ?, note = ? WHERE id = ?`)
+      .run(status, note ?? null, id);
+  },
+
+  seen: (id: string) => Boolean(db.prepare(`SELECT 1 FROM inbound_events WHERE id = ?`).get(id)),
+
+  list(limit = 100): InboundEvent[] {
+    return db
+      .prepare(`SELECT * FROM inbound_events ORDER BY received_at DESC LIMIT ?`)
+      .all(limit)
+      .map(inboundFromRow);
   },
 };
 

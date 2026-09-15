@@ -84,7 +84,22 @@ export const RUNBOOK_ACTIONS: ActionSpec[] = [
   },
 ];
 
-export const actionById = (id: string) => RUNBOOK_ACTIONS.find((a) => a.id === id);
+/**
+ * Look an action up forgivingly.
+ *
+ * A mission called "rollback-deployment" against an action registered as
+ * "rollback_deployment", the lookup missed, and the tool returned "unknown
+ * action" - so the run never reached the approval gate and the incident closed
+ * undiagnosed-by-a-human. The separator is not worth a failed remediation.
+ */
+export const actionById = (id: string) => {
+  const norm = (v: string) => v.toLowerCase().replace(/[-\s]/g, '_');
+  const wanted = norm(id ?? '');
+  return RUNBOOK_ACTIONS.find((a) => norm(a.id) === wanted);
+};
+
+/** Exact ids, for the tool schema - the model cannot then invent one. */
+const ACTION_IDS = RUNBOOK_ACTIONS.map((a) => a.id) as [string, ...string[]];
 
 export function createRunbookServer(ctx: RunbookContext) {
 const listActions = tool(
@@ -104,13 +119,16 @@ const executeAction = tool(
   'execute_action',
   'Execute a remediation action. High-impact actions pause for human approval before running - propose clearly and expect to wait.',
   {
-    actionId: z.string().describe('Action id from list_actions, e.g. rollback_deployment.'),
+    actionId: z.enum(ACTION_IDS).describe('Which action to run. Must be one of the listed ids exactly.'),
     target: z.string().describe('Resource to act on, e.g. oms-api.'),
     reason: z.string().describe('Why this action resolves the incident. Shown to the human approver.'),
     params: z.record(z.string(), z.union([z.string(), z.number()])).optional()
       .describe('Action parameters, e.g. { replicas: 8 } or { DB_MAX_POOL_SIZE: "50" }.'),
   },
   async ({ actionId, target, reason, params }) => {
+    if (typeof params === 'string') {
+      try { params = JSON.parse(params); } catch { params = undefined; }
+    }
     const spec = actionById(actionId);
     if (!spec) {
       return text(

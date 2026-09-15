@@ -15,8 +15,11 @@ import { config, hasAnthropicKey, hasGithubToken } from './config.ts';
 import { loadFleet, readAgentFile, validateAgentFile, writeAgentFile } from './agents/fleet.ts';
 import { fleetSummary } from './orchestrator/prompts.ts';
 import {
-  agentRuns, alerts, approvals, artifacts, events, missions,
+  agentRuns, alerts, approvals, artifacts, events, inboundEvents, missions,
 } from './db.ts';
+import {
+  dispatchEvent, newDeliveryId, normalizeWebhook, pollGitHub, verifySignature,
+} from './events/github.ts';
 import { bus } from './bus.ts';
 import {
   cancelMission, createMission, isRunning, missionFromAlert,
@@ -30,6 +33,21 @@ const orphaned = reconcileOrphanedMissions();
 
 const app = Fastify({ logger: { level: config.nodeEnv === 'production' ? 'warn' : 'info' } });
 await app.register(cors, { origin: true });
+
+// Webhook signatures are computed over the exact bytes GitHub sent, so the raw
+// body has to survive JSON parsing.
+app.addContentTypeParser(
+  'application/json',
+  { parseAs: 'string' },
+  (req, body: string, done) => {
+    (req as any).rawBody = body;
+    try {
+      done(null, body.length ? JSON.parse(body) : {});
+    } catch (err) {
+      done(err as Error, undefined);
+    }
+  },
+);
 
 /* ------------------------------------------------------------------ meta */
 
@@ -169,6 +187,56 @@ app.post('/api/approvals/:id/decide', async (req, reply) => {
   return approvals.get(id);
 });
 
+/* ------------------------------------------------------- inbound events */
+
+/** Everything GitHub has sent us, and what we did with it. */
+app.get('/api/events/inbound', async () => inboundEvents.list());
+
+/**
+ * GitHub webhook receiver.
+ *
+ * This is how work should really arrive: someone files an issue or opens a pull
+ * request, and the fleet picks it up. Always answers 202 once the delivery is
+ * accepted - a webhook endpoint that returns errors gets disabled by GitHub,
+ * and whether we chose to act is our business, not a delivery failure.
+ */
+app.post('/api/webhooks/github', async (req, reply) => {
+  const signature = req.headers['x-hub-signature-256'] as string | undefined;
+  const raw = (req as any).rawBody ?? '';
+  if (!verifySignature(raw, signature)) {
+    return reply.code(401).send({ error: 'Invalid signature' });
+  }
+
+  const event = (req.headers['x-github-event'] as string) ?? 'unknown';
+  const deliveryId = (req.headers['x-github-delivery'] as string) ?? newDeliveryId();
+  const normalized = normalizeWebhook(event, deliveryId, req.body);
+
+  if ('skip' in normalized) {
+    return reply.code(202).send({ accepted: true, acted: false, reason: normalized.skip });
+  }
+
+  const result = dispatchEvent(
+    normalized,
+    startMissionInBackground,
+    (args) => createMission(args),
+    'github_webhook',
+  );
+  return reply.code(202).send({ accepted: true, acted: result.status === 'dispatched', ...result });
+});
+
+/** Poll once on demand - useful to show the flow without a public URL. */
+app.post('/api/events/poll', async () => {
+  const found = await pollGitHub();
+  const results = found.map((e) =>
+    dispatchEvent(e, startMissionInBackground, (args) => createMission(args), 'github_poll'),
+  );
+  return {
+    checked: found.length,
+    dispatched: results.filter((r) => r.status === 'dispatched').length,
+    results,
+  };
+});
+
 /* ---------------------------------------------------------------- alerts */
 
 app.get('/api/alerts', async () => alerts.list());
@@ -242,6 +310,28 @@ if (existsSync(webDist)) {
 
 await app.listen({ port: config.port, host: '0.0.0.0' });
 
+/**
+ * Background poll.
+ *
+ * A laptop cannot receive webhooks, so polling is what makes the event-driven
+ * path demonstrable locally. Deduplication is on the event id, so this running
+ * alongside a real webhook cannot start the same work twice.
+ */
+if (hasGithubToken() && config.github.pollSeconds > 0) {
+  const tick = async () => {
+    try {
+      const found = await pollGitHub();
+      for (const e of found) {
+        dispatchEvent(e, startMissionInBackground, (args) => createMission(args), 'github_poll');
+      }
+    } catch (err) {
+      app.log.warn({ err }, 'github poll failed');
+    }
+  };
+  setInterval(tick, config.github.pollSeconds * 1000).unref();
+  void tick();
+}
+
 const banner = [
   ``,
   `  ${config.productName} API listening on http://localhost:${config.port}`,
@@ -249,6 +339,10 @@ const banner = [
   `  Anthropic key: ${hasAnthropicKey() ? 'configured' : 'MISSING - missions will not run'}`,
   ...(orphaned ? [`  Closed out ${orphaned} mission(s) orphaned by the last restart`] : []),
   `  GitHub token:  ${hasGithubToken() ? 'configured' : 'missing - issues/PRs recorded locally'}`,
+  hasGithubToken() && config.github.pollSeconds > 0
+    ? `  Watching ${config.github.owner}/${config.github.repo} every ${config.github.pollSeconds}s` +
+      (config.github.triggerLabel ? ` for issues labelled "${config.github.triggerLabel}"` : '')
+    : `  Event intake: webhook only (POST /api/webhooks/github)`,
   ``,
 ].join('\n');
 console.log(banner);

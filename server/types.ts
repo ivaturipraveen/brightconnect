@@ -1,7 +1,16 @@
 /** Domain model shared by the API and, via /api/schema, the web client. */
 
-/** The two workflows the platform runs. */
-export type MissionKind = 'sdlc' | 'incident';
+/**
+ * The workflows the platform runs.
+ * - sdlc     a specification through to a reviewable pull request
+ * - incident an alert through to verified remediation
+ * - ticket   a GitHub issue through to a pull request that closes it
+ * - review   a pull request through to review findings posted on it
+ */
+export type MissionKind = 'sdlc' | 'incident' | 'ticket' | 'review';
+
+/** How a mission came to exist. Most real work should not start with a click. */
+export type MissionTrigger = 'manual' | 'alert' | 'github_webhook' | 'github_poll';
 
 export type MissionStatus =
   | 'queued'
@@ -20,6 +29,9 @@ export interface Mission {
   status: MissionStatus;
   /** Populated from the alert that triggered an incident mission. */
   alertId?: string | null;
+  trigger: MissionTrigger;
+  /** What in the outside world this mission answers, e.g. "issue#42". */
+  sourceRef?: string | null;
   sessionId?: string | null;
   /** Final narrative result produced by the orchestrator. */
   summary?: string | null;

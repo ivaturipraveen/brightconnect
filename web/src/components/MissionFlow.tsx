@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { AgentRun, MissionEvent } from '../lib/api.ts';
+import type { AgentRun, MissionEvent, MissionKind } from '../lib/api.ts';
 import { Badge, StatusDot, fmtDuration } from './ui.tsx';
 
 /**
@@ -15,10 +15,17 @@ import { Badge, StatusDot, fmtDuration } from './ui.tsx';
 /** Agents engaged within this window of each other count as concurrent. */
 const WAVE_WINDOW_MS = 4000;
 
+const INTAKE: Record<MissionKind, { title: string; subtitle: string }> = {
+  incident: { title: 'Alert received', subtitle: 'from monitoring' },
+  sdlc: { title: 'Specification received', subtitle: 'from the requester' },
+  ticket: { title: 'Ticket received', subtitle: 'from GitHub Issues' },
+  review: { title: 'Pull request opened', subtitle: 'from GitHub' },
+};
+
 interface Props {
   agents: AgentRun[];
   events: MissionEvent[];
-  missionKind: 'sdlc' | 'incident';
+  missionKind: MissionKind;
   missionStatus: string;
 }
 
@@ -50,8 +57,8 @@ export default function MissionFlow({ agents, events, missionKind, missionStatus
       {/* ---- intake ---- */}
       <Node
         tone="intake"
-        title={missionKind === 'incident' ? 'Alert received' : 'Specification received'}
-        subtitle={missionKind === 'incident' ? 'from monitoring' : 'from the requester'}
+        title={INTAKE[missionKind].title}
+        subtitle={INTAKE[missionKind].subtitle}
       />
       <Connector />
 

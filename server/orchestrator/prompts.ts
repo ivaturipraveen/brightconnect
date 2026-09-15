@@ -14,6 +14,37 @@ const roster = (fleet: FleetMember[], d: Department) =>
     .map((m) => `  - ${m.id}: ${m.role}`)
     .join('\n');
 
+/**
+ * The orchestrator's own tools, by exact name.
+ *
+ * The fleet gets this and the orchestrator did not, which is why a mission
+ * would announce "now executing the remediation" and then write a summary
+ * instead: it never knew mcp__runbook__execute_action existed by name, and
+ * nothing ever called list_actions.
+ */
+const ORCHESTRATOR_TOOLS = `
+Your own tools, by exact name - these are yours to call directly:
+
+  mcp__telemetry__query_alerts        what is firing
+  mcp__telemetry__query_logs          platform and application logs
+  mcp__telemetry__query_metrics       metric time series
+  mcp__telemetry__describe_resource   resource config and state
+  mcp__changemgmt__recent_changes     deploys, config changes, flags
+  mcp__changemgmt__describe_change    one change in full, with its rollback
+  mcp__runbook__list_actions          remediation actions and their blast radius
+  mcp__runbook__execute_action        run one - PAUSES FOR HUMAN APPROVAL
+  mcp__github__get_repo_context       repository state
+  mcp__github__list_issues            existing tickets
+  mcp__github__create_issue           file a ticket
+  mcp__github__comment_issue          add to a ticket
+  mcp__github__open_pull_request      open a PR - PAUSES FOR HUMAN APPROVAL
+
+  Agent                               delegate to a specialist
+  Read, Write, Edit, Glob, Grep       the mission workspace
+
+Do not guess at other names.
+`.trim();
+
 export function orchestratorSystemPrompt(workspaceDir: string): string {
   const fleet = loadFleet();
   return `You are the mission orchestrator for ${config.productName}, an AI engineering
@@ -106,6 +137,8 @@ both the approval gate and the audit trail, which is the entire control the
 platform offers. Call mcp__runbook__list_actions to see what is available, then
 mcp__runbook__execute_action to run one.
 
+${ORCHESTRATOR_TOOLS}
+
 Be direct and concrete. The people reading your output are engineers handling an
 incident or reviewing a change, and they are short on time.`;
 }
@@ -151,6 +184,54 @@ are at risk.
 --- ALERT ---
 ${alertSummary}
 --- END ALERT ---`;
+}
+
+export function ticketMissionPrompt(issue: string): string {
+  return `A ticket has been assigned to the fleet. Resolve it.
+
+This did not come from a person clicking a button - it arrived from GitHub, and
+the team that filed it expects to see the answer back on the ticket, not in a
+dashboard they do not use.
+
+Take it from the issue as written to a pull request that closes it:
+understand what is being asked, decide whether it is well enough specified to
+build, design it, build it, test it, document it, review it, and assemble it
+into a pull request that references the issue.
+
+Two judgement calls are yours to make:
+- If the issue is too vague to build from, do not guess. Comment on the issue
+  with the specific questions that would unblock it, and stop. A confident
+  implementation of the wrong thing wastes more of their time than a question.
+- If the issue is a question rather than a change request, answer it on the
+  issue and stop. Not every ticket needs code.
+
+When you open the pull request, reference the issue number so it closes on
+merge, and comment on the issue with a one-line summary and the link.
+
+--- TICKET ---
+${issue}
+--- END TICKET ---`;
+}
+
+export function reviewMissionPrompt(pr: string): string {
+  return `A pull request is open and needs review.
+
+Review it the way a good staff engineer would: correctness first, then security,
+then maintainability. Engage the specialists for the dimensions that matter -
+the code reviewer and the security reviewer both hold this scope.
+
+Read the change before judging it. If you cannot see the diff through the tools
+you have, say so plainly rather than reviewing the description and presenting it
+as a review of the code.
+
+Post your findings as a comment on the pull request. For each one give the file,
+the line, what breaks, and a concrete failure scenario. Approve explicitly when
+the change is sound - a review that never approves anything gets ignored, and so
+does one that never finds anything.
+
+--- PULL REQUEST ---
+${pr}
+--- END PULL REQUEST ---`;
 }
 
 /** Compact fleet reference used by the UI. */

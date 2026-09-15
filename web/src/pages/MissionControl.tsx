@@ -1,10 +1,30 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, type Mission, type Template } from '../lib/api.ts';
+import { api, type InboundEvent, type Mission, type MissionKind, type Template } from '../lib/api.ts';
 import { useActivityStream } from '../lib/stream.ts';
 import {
   Badge, Button, Empty, Panel, StatusDot, fmtCost, fmtDuration, relTime, type Tone,
 } from '../components/ui.tsx';
+
+const KIND_LABEL: Record<MissionKind, string> = {
+  sdlc: 'delivery',
+  incident: 'incident',
+  ticket: 'ticket',
+  review: 'review',
+};
+const KIND_TONE: Record<MissionKind, Tone> = {
+  sdlc: 'info',
+  incident: 'crit',
+  ticket: 'think',
+  review: 'ok',
+};
+/** Where the work came from - a click, or the outside world. */
+const TRIGGER_LABEL: Record<string, string> = {
+  manual: 'launched by hand',
+  alert: 'from an alert',
+  github_webhook: 'GitHub webhook',
+  github_poll: 'seen on GitHub',
+};
 
 const STATUS_TONE: Record<string, Tone> = {
   running: 'info',
@@ -18,9 +38,13 @@ const STATUS_TONE: Record<string, Tone> = {
 export default function MissionControl() {
   const [missions, setMissions] = useState<Mission[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [inbound, setInbound] = useState<InboundEvent[]>([]);
   const [composerOpen, setComposerOpen] = useState(false);
 
-  const load = () => void api.missions().then(setMissions).catch(() => {});
+  const load = () => {
+    void api.missions().then(setMissions).catch(() => {});
+    void api.inboundEvents().then(setInbound).catch(() => {});
+  };
 
   useEffect(() => {
     load();
@@ -56,6 +80,8 @@ export default function MissionControl() {
         />
       )}
 
+      <Intake events={inbound} onChanged={load} />
+
       <Panel title={`Active missions${active.length ? ` (${active.length})` : ''}`} dense>
         {active.length === 0 ? (
           <div className="p-4">
@@ -74,6 +100,91 @@ export default function MissionControl() {
         )}
       </Panel>
     </div>
+  );
+}
+
+/**
+ * Work arriving from GitHub.
+ *
+ * The point of this panel is that most rows should not say "launched by hand" -
+ * an agentic platform where a human starts every task is just a chatbot with
+ * extra steps.
+ */
+function Intake({ events, onChanged }: { events: InboundEvent[]; onChanged: () => void }) {
+  const [checking, setChecking] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  const check = async () => {
+    setChecking(true);
+    setNote(null);
+    try {
+      const r = await api.pollNow();
+      setNote(
+        r.dispatched > 0
+          ? `Picked up ${r.dispatched} new item${r.dispatched === 1 ? '' : 's'}.`
+          : r.checked > 0
+            ? `${r.checked} open item${r.checked === 1 ? '' : 's'}, all already handled.`
+            : 'Nothing new on GitHub.',
+      );
+      onChanged();
+    } catch (err) {
+      setNote(err instanceof Error ? err.message : String(err));
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const STATUS: Record<string, Tone> = {
+    dispatched: 'ok',
+    received: 'info',
+    ignored: 'neutral',
+    duplicate: 'neutral',
+  };
+
+  return (
+    <Panel
+      title="Intake — work arriving from GitHub"
+      dense
+      actions={
+        <div className="flex items-center gap-2">
+          {note && <span className="text-[11px] text-ink-400">{note}</span>}
+          <Button onClick={check} disabled={checking}>
+            {checking ? 'Checking…' : 'Check GitHub now'}
+          </Button>
+        </div>
+      }
+    >
+      {events.length === 0 ? (
+        <div className="p-4">
+          <Empty>
+            Nothing has arrived yet. Issues labelled for the fleet, and new pull requests,
+            start missions on their own.
+          </Empty>
+        </div>
+      ) : (
+        <ul className="max-h-64 divide-y divide-ink-800 overflow-y-auto">
+          {events.map((e) => (
+            <li key={e.id} className="flex flex-wrap items-center gap-2 px-4 py-2">
+              <Badge tone={STATUS[e.status] ?? 'neutral'}>{e.status}</Badge>
+              <span className="font-mono text-[11px] text-ink-400">{e.sourceRef}</span>
+              <span className="min-w-0 flex-1 truncate text-[13px] text-ink-100">{e.title}</span>
+              {e.missionId && (
+                <Link
+                  to={`/missions/${e.missionId}`}
+                  className="text-[11px] text-signal-300 hover:underline"
+                >
+                  mission →
+                </Link>
+              )}
+              <span className="text-[11px] text-ink-500">{relTime(e.receivedAt)}</span>
+              {e.note && (
+                <div className="w-full pl-1 text-[11px] text-ink-500">{e.note}</div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
   );
 }
 
@@ -104,9 +215,10 @@ function MissionTable({ missions }: { missions: Mission[] }) {
                 </Link>
               </td>
               <td className="px-3 py-2.5">
-                <Badge tone={m.kind === 'incident' ? 'crit' : 'info'}>
-                  {m.kind === 'incident' ? 'incident' : 'delivery'}
-                </Badge>
+                <Badge tone={KIND_TONE[m.kind]}>{KIND_LABEL[m.kind]}</Badge>
+                {m.sourceRef && (
+                  <div className="mt-0.5 font-mono text-[10px] text-ink-500">{m.sourceRef}</div>
+                )}
               </td>
               <td className="px-3 py-2.5">
                 <Badge tone={STATUS_TONE[m.status] ?? 'neutral'}>
@@ -122,7 +234,12 @@ function MissionTable({ missions }: { missions: Mission[] }) {
               <td className="px-3 py-2.5 text-right font-mono tabular-nums text-ink-300">
                 {fmtCost(m.costUsd)}
               </td>
-              <td className="px-4 py-2.5 text-right text-ink-400">{relTime(m.createdAt)}</td>
+              <td className="px-4 py-2.5 text-right text-ink-400">
+                {relTime(m.createdAt)}
+                <div className="text-[10px] text-ink-500">
+                  {TRIGGER_LABEL[m.trigger] ?? m.trigger}
+                </div>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -137,7 +254,7 @@ function Composer({
   const navigate = useNavigate();
   const [title, setTitle] = useState('');
   const [input, setInput] = useState('');
-  const [kind, setKind] = useState<'sdlc' | 'incident'>('sdlc');
+  const [kind, setKind] = useState<MissionKind>('sdlc');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -194,11 +311,13 @@ function Composer({
           />
           <select
             value={kind}
-            onChange={(e) => setKind(e.target.value as 'sdlc' | 'incident')}
+            onChange={(e) => setKind(e.target.value as MissionKind)}
             className="rounded-md border border-ink-600 bg-ink-850 px-3 py-2 text-[13px] text-ink-100 focus:border-signal-500 focus:outline-none"
           >
             <option value="sdlc">Software delivery</option>
             <option value="incident">Incident response</option>
+            <option value="ticket">Resolve a ticket</option>
+            <option value="review">Review a pull request</option>
           </select>
         </div>
 

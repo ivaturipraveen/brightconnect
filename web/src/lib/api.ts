@@ -13,9 +13,23 @@ export interface AppConfig {
 export type MissionStatus =
   | 'queued' | 'running' | 'awaiting_approval' | 'succeeded' | 'failed' | 'cancelled';
 
+export type MissionKind = 'sdlc' | 'incident' | 'ticket' | 'review';
+
+export interface InboundEvent {
+  id: string;
+  source: string;
+  kind: string;
+  sourceRef: string;
+  title?: string | null;
+  missionId?: string | null;
+  status: 'received' | 'dispatched' | 'ignored' | 'duplicate';
+  note?: string | null;
+  receivedAt: string;
+}
+
 export interface Mission {
   id: string;
-  kind: 'sdlc' | 'incident';
+  kind: MissionKind;
   title: string;
   input: string;
   status: MissionStatus;
@@ -30,6 +44,8 @@ export interface Mission {
   startedAt?: string | null;
   finishedAt?: string | null;
   live?: boolean;
+  trigger: 'manual' | 'alert' | 'github_webhook' | 'github_poll';
+  sourceRef?: string | null;
 }
 
 export interface MissionEvent {
@@ -110,7 +126,7 @@ export interface AgentFile {
 
 export interface Template {
   id: string;
-  kind: 'sdlc' | 'incident';
+  kind: MissionKind;
   title: string;
   blurb: string;
   input: string;
@@ -142,7 +158,7 @@ export const api = {
       approvals: Approval[];
       artifacts: Artifact[];
     }>(`/missions/${id}`),
-  createMission: (body: { kind: 'sdlc' | 'incident'; title: string; input: string }) =>
+  createMission: (body: { kind: MissionKind; title: string; input: string }) =>
     req<Mission>('/missions', { method: 'POST', body: JSON.stringify(body) }),
   cancelMission: (id: string) =>
     req<{ cancelled: boolean }>(`/missions/${id}/cancel`, { method: 'POST' }),
@@ -160,6 +176,9 @@ export const api = {
     }),
 
   artifacts: () => req<Artifact[]>('/artifacts'),
+
+  inboundEvents: () => req<InboundEvent[]>('/events/inbound'),
+  pollNow: () => req<{ checked: number; dispatched: number }>('/events/poll', { method: 'POST' }),
 
   agentFile: (id: string) => req<AgentFile>(`/agents/${id}`),
   validateAgent: (id: string, content: string) =>

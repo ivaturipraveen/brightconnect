@@ -20,7 +20,8 @@ import { createGithubServer } from '../tools/github.ts';
 import { changeMgmtServer, telemetryServer } from '../tools/telemetry.ts';
 import { createRunbookServer } from '../tools/runbook.ts';
 import {
-  incidentMissionPrompt, orchestratorSystemPrompt, sdlcMissionPrompt,
+  incidentMissionPrompt, orchestratorSystemPrompt, reviewMissionPrompt,
+  sdlcMissionPrompt, ticketMissionPrompt,
 } from './prompts.ts';
 import {
   registerMissionAbort, releaseMissionAbort, resolveApproval,
@@ -141,6 +142,14 @@ export async function runMission(missionId: string): Promise<void> {
   let numTurns = 0;
   let sessionId = '';
 
+  // On an incident, nothing legitimately needs a shell: remediation goes through
+  // the runbook tool so it passes the approval gate and lands in the audit trail.
+  // Telling the orchestrator that in the prompt was not enough - it kept reaching
+  // for kubectl, failing with exit 127, and closing the mission at a diagnosis.
+  // Removing the tool is what actually holds.
+  const disallowed =
+    mission.kind === 'incident' ? [...DISALLOWED_TOOLS, 'Bash'] : DISALLOWED_TOOLS;
+
   const options: Options = {
     model: config.anthropic.orchestratorModel,
     systemPrompt: orchestratorSystemPrompt(workspaceDir),
@@ -148,7 +157,7 @@ export async function runMission(missionId: string): Promise<void> {
     cwd: workspaceDir,
     // Keep the run isolated from whatever settings happen to exist on the host.
     settingSources: [],
-    disallowedTools: DISALLOWED_TOOLS,
+    disallowedTools: disallowed,
     // The approval gate lives inside the gated tools (see orchestrator/approvals.ts),
     // not in a permission callback: canUseTool is not reliably delivered for
     // subagent tool calls, and a gate that silently stops firing is worse than
@@ -169,7 +178,11 @@ export async function runMission(missionId: string): Promise<void> {
   const prompt =
     mission.kind === 'incident'
       ? incidentMissionPrompt(mission.input)
-      : sdlcMissionPrompt(mission.input);
+      : mission.kind === 'ticket'
+        ? ticketMissionPrompt(mission.input)
+        : mission.kind === 'review'
+          ? reviewMissionPrompt(mission.input)
+          : sdlcMissionPrompt(mission.input);
 
   try {
     for await (const message of query({ prompt, options })) {
