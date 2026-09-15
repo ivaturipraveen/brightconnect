@@ -8,9 +8,10 @@
  * tool - we observe those delegations here rather than scripting them.
  */
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { Options, PermissionResult, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { nanoid } from 'nanoid';
 import { config, hasAnthropicKey } from '../config.ts';
 import { agentDefinitions, loadFleet } from '../agents/fleet.ts';
@@ -52,6 +53,54 @@ const DISALLOWED_TOOLS = [
   'CronCreate', 'CronList', 'CronDelete',
 ];
 
+/** Tool inputs that name a filesystem path. */
+const PATH_FIELDS = ['file_path', 'path', 'notebook_path', 'cwd'];
+
+/**
+ * Confine filesystem tools to the mission workspace.
+ *
+ * Without this an agent writes into the platform's own source tree. It happened:
+ * a backend engineer created server/metrics.ts in this repository, edited it,
+ * added jest to package.json and ran npm install - which restarted the server
+ * and killed its own mission. Agents are supposed to build in their workspace,
+ * and the workspace is what becomes the pull request.
+ */
+function escapesWorkspace(
+  toolName: string,
+  input: Record<string, unknown>,
+  workspaceDir: string,
+): string | null {
+  const root = resolve(workspaceDir);
+  const outside = (candidate: string): boolean => {
+    const abs = isAbsolute(candidate) ? resolve(candidate) : resolve(root, candidate);
+    const rel = relative(root, abs);
+    return rel.startsWith('..') || isAbsolute(rel);
+  };
+
+  for (const field of PATH_FIELDS) {
+    const value = input[field];
+    if (typeof value === 'string' && value.trim() && outside(value)) return value;
+  }
+
+  // Bash can name paths anywhere in the command string. Scanning a shell
+  // command for paths is inherently approximate, so this errs towards allowing:
+  // the sandbox below is the actual enforcement, and a false denial here breaks
+  // legitimate work. (A workspace path containing a space - "New POC" - was
+  // matched as the truncated "/Users/yanthraa/Desktop/New" and denied, blocking
+  // the agent from its own workspace.)
+  if (toolName === 'Bash' && typeof input.command === 'string') {
+    const command = input.command.replace(/\\ /g, ' ');
+    for (const token of command.match(/\/(?:[\w.\-@+]|\/| (?=[\w.\-@+]))+/g) ?? []) {
+      const candidate = token.trim();
+      if (candidate.length <= 4) continue;
+      // A truncated match that the workspace path starts with is not an escape.
+      if (root.startsWith(candidate)) continue;
+      if (outside(candidate)) return candidate;
+    }
+  }
+  return null;
+}
+
 /** Missions currently executing, so they can be cancelled. */
 const running = new Map<string, AbortController>();
 
@@ -69,6 +118,9 @@ export interface StartMissionArgs {
   title: string;
   input: string;
   alertId?: string | null;
+  trigger?: Mission['trigger'];
+  /** What in the outside world this answers, e.g. "issue#42". */
+  sourceRef?: string | null;
 }
 
 export function createMission(args: StartMissionArgs): Mission {
@@ -78,13 +130,17 @@ export function createMission(args: StartMissionArgs): Mission {
     title: args.title,
     input: args.input,
     alertId: args.alertId ?? null,
+    trigger: args.trigger ?? 'manual',
+    sourceRef: args.sourceRef ?? null,
   });
   bus.emitEvent({
     missionId: mission.id,
     type: 'mission.created',
     actor: 'system',
-    text: `Mission created: ${mission.title}`,
-    data: { kind: mission.kind },
+    text:
+      `Mission created: ${mission.title}` +
+      (mission.sourceRef ? ` (from ${mission.sourceRef})` : ''),
+    data: { kind: mission.kind, trigger: mission.trigger, sourceRef: mission.sourceRef },
   });
   return mission;
 }
@@ -150,6 +206,56 @@ export async function runMission(missionId: string): Promise<void> {
   const disallowed =
     mission.kind === 'incident' ? [...DISALLOWED_TOOLS, 'Bash'] : DISALLOWED_TOOLS;
 
+  /**
+   * Containment only. The approval gate lives inside the gated tools, so this
+   * callback stays fast and synchronous - it never blocks waiting on a human,
+   * which is what made the earlier gate-in-canUseTool design fragile.
+   */
+  const canUseTool = async (
+    toolName: string,
+    input: Record<string, unknown>,
+  ): Promise<PermissionResult> => {
+    const escaped = escapesWorkspace(toolName, input, workspaceDir);
+    if (!escaped) return { behavior: 'allow' };
+
+    bus.emitEvent({
+      missionId,
+      type: 'tool.result',
+      actor: 'system',
+      text: `Blocked ${toolName}: ${escaped} is outside the mission workspace`,
+      data: { blocked: true, toolName, path: escaped },
+    });
+    return {
+      behavior: 'deny',
+      message:
+        `Denied: ${escaped} is outside the mission workspace (${workspaceDir}). ` +
+        `Build inside the workspace - its contents become the pull request. ` +
+        `Never modify the platform's own source, and do not install packages globally.`,
+    };
+  };
+
+  // OS-level containment.
+  //
+  // canUseTool is delivered for the main thread but not for subagent tool
+  // calls, so a permission callback cannot confine the fleet - proven twice,
+  // both times by a backend engineer writing server/metrics.ts into this
+  // repository, adding jest to package.json, running npm install and
+  // restarting the server mid-mission. The sandbox is enforced by the
+  // operating system, so it holds for every agent regardless of how its tool
+  // call was routed.
+  const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
+  const sandbox = {
+    enabled: true,
+    // Never silently degrade to unsandboxed: a containment control that
+    // quietly turns itself off is worse than not having one.
+    failIfUnavailable: true,
+    autoAllowBashIfSandboxed: true,
+    filesystem: {
+      allowWrite: [workspaceDir],
+      denyWrite: [projectRoot],
+    },
+  };
+
   const options: Options = {
     model: config.anthropic.orchestratorModel,
     systemPrompt: orchestratorSystemPrompt(workspaceDir),
@@ -158,11 +264,12 @@ export async function runMission(missionId: string): Promise<void> {
     // Keep the run isolated from whatever settings happen to exist on the host.
     settingSources: [],
     disallowedTools: disallowed,
-    // The approval gate lives inside the gated tools (see orchestrator/approvals.ts),
-    // not in a permission callback: canUseTool is not reliably delivered for
-    // subagent tool calls, and a gate that silently stops firing is worse than
-    // no gate. Subagents get their scope from each agent's `tools` list instead.
-    permissionMode: 'bypassPermissions',
+    // 'default' plus a containment-only callback. bypassPermissions was a
+    // mistake: it disables the SDK's own path sandbox, and an agent promptly
+    // wrote into this repository.
+    permissionMode: 'default',
+    canUseTool,
+    sandbox,
     abortController: abort,
     maxBudgetUsd: config.maxMissionCostUsd,
     effort: 'high',
@@ -412,6 +519,8 @@ export function missionFromAlert(alertId: string): Mission | null {
     title: alert.title,
     input: summary,
     alertId,
+    trigger: 'alert',
+    sourceRef: alert.id,
   });
 }
 

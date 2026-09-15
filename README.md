@@ -12,12 +12,19 @@ not a scripted animation.
 
 ## What it does
 
-**Two mission types**, mapped to the two workflows a platform team runs:
+**Four mission types**, mapped to the work a platform team actually does:
 
-| Mission | Input | The fleet does | Human does |
+| Mission | Arrives from | The fleet does | Human does |
 |---|---|---|---|
 | **Software delivery** | A PRD, ARD, or tech spec | Requirements → design → code → IaC → tests → docs → security and code review → pull request | One go/no-go on the PR |
 | **Incident response** | A firing alert | Parallel investigation of logs, config, and recent changes → root cause → ticket → remediation → verification | Approve the remediation |
+| **Ticket resolution** | A GitHub issue | Understands the ask, builds it, opens a PR that closes the issue — or asks a question on the issue if it is too vague to build | Go/no-go on the PR |
+| **Pull request review** | A GitHub PR | Correctness, security and maintainability review, posted back on the PR | Read the findings |
+
+**Work arrives as events, not clicks.** An issue is filed, a pull request opens,
+an alert fires — the fleet picks it up. A dashboard where a human starts every
+task is a chatbot with extra steps; the dashboard here is for watching and
+steering, not for driving.
 
 **17 agents across three departments** — each with its own instructions, its own tools,
 and a scope it cannot exceed. Adding a capability means adding an agent, not rebuilding
@@ -161,6 +168,31 @@ dist/                    built console (gitignored)
 
 One package, one `package.json`, one `npm install`. The server and the console
 share a dependency tree; `vite.config.ts` points at `web/` as its root.
+
+---
+
+## Event intake
+
+Two ways work reaches the fleet, both through the same dispatch path, both
+deduplicated on delivery id — so running them together cannot start the same
+work twice.
+
+**Webhook** (the real path). Point GitHub at `POST /api/webhooks/github` and set
+`GITHUB_WEBHOOK_SECRET`. Deliveries are HMAC-verified: an unauthenticated
+endpoint that starts agent runs is a way to spend your API budget. Needs a
+public URL, so EC2 or ngrok.
+
+**Polling** (works anywhere). The server asks GitHub what is new every
+`GITHUB_POLL_SECONDS`. This is what makes the event-driven path demonstrable on
+a laptop. `POST /api/events/poll` forces a check, and the console has a
+**Check GitHub now** button.
+
+Issues need the `GITHUB_TRIGGER_LABEL` label (default `brightworks`) before the
+fleet picks them up. Pointed at a real repository, acting on every new issue
+would start a mission for each one. Set it empty to act on everything.
+
+A mission already working an issue means a second event for the same issue is
+ignored rather than starting a competing run.
 
 ---
 
