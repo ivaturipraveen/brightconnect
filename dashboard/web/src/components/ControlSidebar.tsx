@@ -21,7 +21,7 @@ export default function ControlSidebar({ overview }: { overview: Overview | null
 
   return (
     <aside className="flex h-full flex-col gap-4 overflow-y-auto">
-      <section className="rounded-xl border border-ink-700 bg-ink-900 p-3">
+      <section className="shrink-0 rounded-xl border border-ink-700 bg-ink-900 p-3">
         <h2 className="mb-2.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-400">
           <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M3 12h4l3-8 4 16 3-8h4" strokeLinecap="round" strokeLinejoin="round" />
@@ -39,7 +39,7 @@ export default function ControlSidebar({ overview }: { overview: Overview | null
         </div>
       </section>
 
-      <section className="rounded-xl border border-think-400/40 bg-think-400/[0.07]">
+      <section className="shrink-0 rounded-xl border border-think-400/40 bg-think-400/[0.07]">
         <h2 className="border-b border-think-400/25 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-think-400">
           Orchestrator
         </h2>
@@ -73,7 +73,7 @@ export default function ControlSidebar({ overview }: { overview: Overview | null
         </div>
       </section>
 
-      <section className="rounded-xl border border-ink-700 bg-ink-900">
+      <section className="shrink-0 rounded-xl border border-ink-700 bg-ink-900">
         <h2 className="flex items-center gap-2 border-b border-ink-700 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-ink-400">
           Specialists
           <span className="ml-auto font-mono text-[10px] normal-case tracking-normal text-ink-500">
@@ -124,7 +124,7 @@ export default function ControlSidebar({ overview }: { overview: Overview | null
         })}
       </section>
 
-      <section className="rounded-xl border border-ink-700 bg-ink-900">
+      <section className="shrink-0 rounded-xl border border-ink-700 bg-ink-900">
         <h2 className="border-b border-ink-700 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-ink-400">
           Services
         </h2>

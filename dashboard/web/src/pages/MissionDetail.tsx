@@ -207,7 +207,7 @@ export default function MissionDetail() {
         }
         right={
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
-          <Panel title={`Fleet (${agents.length})`} dense>
+          <Panel title={`Fleet (${agents.length})`} dense className="shrink-0">
             {agents.length === 0 ? (
               <div className="p-4"><Empty>No specialists engaged yet.</Empty></div>
             ) : (
@@ -238,7 +238,7 @@ export default function MissionDetail() {
           </Panel>
 
           {artifacts.length > 0 && (
-            <Panel title={`Produced (${artifacts.length})`} dense>
+            <Panel title={`Produced (${artifacts.length})`} dense className="shrink-0">
               <ul className="divide-y divide-ink-800">
                 {artifacts.map((a) => (
                   <li key={a.id} className="px-3 py-2">
