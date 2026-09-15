@@ -117,8 +117,10 @@ export interface Attachment {
 
 /** One frame of a console reply. */
 export interface ConsoleEvent {
-  type: 'text' | 'tool' | 'mission' | 'document' | 'done' | 'error';
+  type: 'text' | 'tool' | 'tool_result' | 'thinking' | 'mission' | 'document' | 'done' | 'error';
   text?: string;
+  /** For a tool call: a compact rendering of its arguments. */
+  detail?: string;
   missionId?: string;
   document?: { name: string; url: string };
   cost?: number;

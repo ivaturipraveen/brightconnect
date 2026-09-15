@@ -5,6 +5,7 @@ import { useActivityStream } from '../lib/stream.ts';
 import { Badge, Button, Panel, fmtCost } from '../components/ui.tsx';
 import ControlSidebar from '../components/ControlSidebar.tsx';
 import SplitPane from '../components/SplitPane.tsx';
+import TerminalLog, { type TerminalLine } from '../components/TerminalLog.tsx';
 import Markdown from '../components/Markdown.tsx';
 
 /**
@@ -61,9 +62,14 @@ export default function Console() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
-  const [view, setView] = useState<'console' | 'preview'>('console');
+  const [view, setView] = useState<'console' | 'terminal' | 'preview'>('console');
+  const [log, setLog] = useState<TerminalLine[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  /** One line on the execution stream. */
+  const emit = (kind: TerminalLine['kind'], text: string, detail?: string) =>
+    setLog((prev) => [...prev.slice(-500), { at: Date.now(), kind, text, detail }]);
 
   const loadOverview = () => void api.overview().then(setOverview).catch(() => {});
   useEffect(() => {
@@ -73,7 +79,22 @@ export default function Console() {
     const id = setInterval(loadOverview, 5000);
     return () => clearInterval(id);
   }, []);
-  useActivityStream({ onMission: loadOverview, onEvent: loadOverview });
+  useActivityStream({
+    onMission: (m) => {
+      emit('mission', `mission ${m.missionId}`, m.status);
+      loadOverview();
+    },
+    onEvent: (e) => {
+      // The fleet's own execution, live, in the same place as the console's.
+      const label = e.actor === 'system' ? e.type : `${e.actor} · ${e.type}`;
+      emit(
+        e.type === 'error' ? 'error' : e.type.startsWith('tool') ? 'tool' : 'system',
+        label,
+        (e.text ?? '').split('\n')[0].slice(0, 160),
+      );
+      loadOverview();
+    },
+  });
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -134,6 +155,7 @@ export default function Console() {
     setInput('');
     setError(null);
     setBusy(true);
+    emit('prompt', text.split('\n')[0].slice(0, 200));
 
     const patch = (fn: (t: Turn) => Turn) =>
       setTurns((prev) => {
@@ -172,8 +194,14 @@ export default function Console() {
 
           if (e.type === 'text' && e.text) {
             patch((t) => ({ ...t, content: t.content + (t.content ? '\n\n' : '') + e.text }));
+            emit('text', e.text.split('\n')[0].slice(0, 200));
+          } else if (e.type === 'thinking' && e.text) {
+            emit('thinking', e.text.split('\n')[0].slice(0, 200));
           } else if (e.type === 'tool' && e.text) {
             patch((t) => ({ ...t, tools: [...(t.tools ?? []), e.text!] }));
+            emit('tool', e.text, e.detail);
+          } else if (e.type === 'tool_result' && e.text) {
+            emit('result', e.text.split('\n')[0].slice(0, 200));
           } else if (e.type === 'mission' && e.missionId) {
             patch((t) => ({ ...t, missionIds: [...(t.missionIds ?? []), e.missionId!] }));
             loadOverview();
@@ -183,6 +211,7 @@ export default function Console() {
             patch((t) => ({ ...t, cost: e.cost }));
           } else if (e.type === 'error') {
             setError(e.text ?? 'Something went wrong');
+            emit('error', e.text ?? 'Something went wrong');
           }
         }
       }
@@ -211,7 +240,7 @@ export default function Console() {
         className="min-h-0 flex-1"
         title={
           <div className="flex items-center gap-1">
-            {(['console', 'preview'] as const).map((v) => (
+            {(['console', 'terminal', 'preview'] as const).map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
@@ -230,8 +259,19 @@ export default function Console() {
             <span className="text-[11px] text-ink-500">
               {view === 'console'
                 ? 'Ask a question, or describe work to be done'
-                : 'The product the fleet maintains, live'}
+                : view === 'terminal'
+                  ? 'Every tool call, result and mission event, as it happens'
+                  : 'The product the fleet maintains, live'}
             </span>
+            {view === 'terminal' && log.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setLog([])}
+                className="rounded px-2 py-0.5 text-[11px] text-ink-400 transition-colors hover:bg-ink-800 hover:text-ink-100"
+              >
+                Clear
+              </button>
+            )}
             {view === 'console' && turns.length > 0 && (
               <button
                 type="button"
@@ -244,20 +284,28 @@ export default function Console() {
           </div>
         }
       >
+        {/* The composer stays mounted in both views: watching the execution and
+            typing the next instruction are the same activity, not two modes. */}
         <div className={`flex min-h-0 flex-1 flex-col ${view === 'preview' ? 'hidden' : ''}`}>
-          <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-            {turns.length === 0 ? (
-              <Welcome onPick={setInput} />
-            ) : (
-              turns.map((t, i) => <TurnView key={i} turn={t} streaming={busy && i === turns.length - 1} />)
-            )}
-            {error && (
-              <div className="rounded-md border border-crit-500/30 bg-crit-500/10 px-3 py-2 text-[13px] text-crit-400">
-                {error}
-              </div>
-            )}
-            <div ref={endRef} />
-          </div>
+          {view === 'terminal' ? (
+            <div className="min-h-0 flex-1">
+              <TerminalLog lines={log} live={busy} />
+            </div>
+          ) : (
+            <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+              {turns.length === 0 ? (
+                <Welcome onPick={setInput} />
+              ) : (
+                turns.map((t, i) => <TurnView key={i} turn={t} streaming={busy && i === turns.length - 1} />)
+              )}
+              {error && (
+                <div className="rounded-md border border-crit-500/30 bg-crit-500/10 px-3 py-2 text-[13px] text-crit-400">
+                  {error}
+                </div>
+              )}
+              <div ref={endRef} />
+            </div>
+          )}
 
           <div className="border-t border-ink-700 p-3">
             {attachments.length > 0 && (

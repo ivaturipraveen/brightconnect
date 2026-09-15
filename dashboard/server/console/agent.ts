@@ -85,8 +85,10 @@ companion. No preamble, no restating the question back.`;
 }
 
 export interface ConsoleEvent {
-  type: 'text' | 'tool' | 'mission' | 'document' | 'done' | 'error';
+  type: 'text' | 'tool' | 'tool_result' | 'thinking' | 'mission' | 'document' | 'done' | 'error';
   text?: string;
+  /** For a tool call: a compact rendering of its arguments. */
+  detail?: string;
   missionId?: string;
   document?: { name: string; url: string };
   cost?: number;
@@ -130,9 +132,13 @@ export async function* runConsoleTurn(
         for (const block of message.message.content ?? []) {
           if (block.type === 'text' && block.text.trim()) {
             yield { type: 'text', text: block.text };
+          } else if (block.type === 'thinking' && (block as any).thinking?.trim()) {
+            yield { type: 'thinking', text: (block as any).thinking };
           } else if (block.type === 'tool_use') {
             const name = block.name.replace(/^mcp__\w+__/, '');
-            yield { type: 'tool', text: name };
+            // The arguments are what makes a tool line readable in the terminal
+            // view: "read_issue" says nothing, "read_issue {number: 6}" does.
+            yield { type: 'tool', text: name, detail: summarise(block.input) };
           }
         }
       }
@@ -145,6 +151,10 @@ export async function* runConsoleTurn(
           const raw = Array.isArray(block.content)
             ? block.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n')
             : String(block.content ?? '');
+          // Every result, so the terminal view shows what came back, not just
+          // what was asked.
+          yield { type: 'tool_result', text: raw.slice(0, 4000) };
+
           // Surface the things the client needs to act on.
           const mission = raw.match(/Mission ([A-Za-z0-9_-]{6,}) started/);
           if (mission) yield { type: 'mission', missionId: mission[1] };
@@ -160,4 +170,19 @@ export async function* runConsoleTurn(
   } catch (err) {
     yield { type: 'error', text: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/** Tool arguments rendered for one terminal line. */
+function summarise(input: unknown): string {
+  if (!input || typeof input !== 'object') return '';
+  const parts: string[] = [];
+  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+    const rendered =
+      typeof value === 'string'
+        ? value.length > 80 ? `${value.slice(0, 80)}…` : value
+        : JSON.stringify(value);
+    parts.push(`${key}: ${rendered}`);
+  }
+  const line = parts.join(', ');
+  return line.length > 200 ? `${line.slice(0, 200)}…` : line;
 }
