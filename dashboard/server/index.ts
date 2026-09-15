@@ -102,6 +102,17 @@ app.get('/api/overview', async () => {
 
   const statsBy = new Map(stats.map((s) => [s.agentType, s]));
   return {
+    // The orchestrator is not one of the fleet - it is what decides which of
+    // them to engage - but leaving it off the roster made the thing doing the
+    // deciding invisible, which is the part people most want to see.
+    orchestrator: {
+      id: 'orchestrator',
+      name: 'Orchestrator',
+      role: 'Reads the request, decides what it is, and engages the specialists it needs',
+      model: config.anthropic.orchestratorModel,
+      status: active.length > 0 ? 'working' : 'idle',
+      missionId: active[0]?.id ?? null,
+    },
     session: {
       activeMissions: active.length,
       totalMissions: all.length,

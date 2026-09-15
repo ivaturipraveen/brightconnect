@@ -13,7 +13,7 @@ export function Panel({
 }) {
   return (
     <section
-      className={`rounded-lg border border-ink-700 bg-ink-900 shadow-sm ${className}`}
+      className={`flex min-h-0 flex-col rounded-lg border border-ink-700 bg-ink-900 shadow-sm ${className}`}
     >
       {(title || actions) && (
         <header className="flex items-center justify-between gap-3 border-b border-ink-700 px-4 py-2.5">
@@ -23,7 +23,7 @@ export function Panel({
           {actions}
         </header>
       )}
-      <div className={dense ? '' : 'p-4'}>{children}</div>
+      <div className={`min-h-0 flex-1 ${dense ? '' : 'p-4'}`}>{children}</div>
     </section>
   );
 }

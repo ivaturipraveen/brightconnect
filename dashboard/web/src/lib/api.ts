@@ -134,6 +134,14 @@ export interface ConsoleEvent {
 }
 
 export interface Overview {
+  orchestrator: {
+    id: string;
+    name: string;
+    role: string;
+    model: string;
+    status: 'working' | 'idle';
+    missionId: string | null;
+  };
   session: {
     activeMissions: number;
     totalMissions: number;

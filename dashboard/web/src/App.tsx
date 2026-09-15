@@ -37,7 +37,7 @@ export default function App() {
   });
 
   return (
-    <div className="flex min-h-screen flex-col bg-ink-950">
+    <div className="flex h-screen flex-col overflow-hidden bg-ink-950">
       <header className="sticky top-0 z-30 border-b border-ink-700 bg-ink-900">
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5 sm:px-6">
           <div className="flex items-center gap-2.5">
@@ -48,7 +48,7 @@ export default function App() {
               </div>
               <div className="text-[11px] text-ink-400">
                 AI engineering workforce
-                {config?.customerName ? ` · ${config.customerName} orders service` : ''}
+                {config?.customerName ? ` · ${config.customerName}` : ''}
               </div>
             </div>
           </div>
@@ -88,7 +88,7 @@ export default function App() {
 
       {config && !config.readiness.anthropic && <SetupBanner />}
 
-      <main className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-5 sm:px-6">
+      <main className="mx-auto w-full max-w-[1600px] flex-1 overflow-hidden px-4 py-4 sm:px-6">
         <Routes>
           <Route path="/" element={<Navigate to="/console" replace />} />
           <Route path="/console" element={<Console />} />

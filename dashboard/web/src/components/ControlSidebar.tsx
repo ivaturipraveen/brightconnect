@@ -35,9 +35,40 @@ export default function ControlSidebar({ overview }: { overview: Overview | null
         </div>
       </section>
 
+      <section className="rounded-lg border border-think-400/40 bg-think-400/[0.06]">
+        <h2 className="border-b border-think-400/25 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-think-400">
+          Orchestrator
+        </h2>
+        <div className="flex items-start gap-2.5 px-3 py-2.5">
+          <span
+            className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full text-[10px] font-semibold ${
+              overview?.orchestrator.status === 'working'
+                ? 'bg-think-400/25 text-think-400 pulse-ring'
+                : 'bg-ink-800 text-ink-400'
+            }`}
+            aria-hidden
+          >
+            OR
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[12px] font-semibold text-ink-100">
+                {overview?.orchestrator.name ?? 'Orchestrator'}
+              </span>
+              <span className={`text-[9px] ${overview?.orchestrator.status === 'working' ? 'text-think-400' : 'text-ink-600'}`}>
+                {overview?.orchestrator.status ?? 'idle'}
+              </span>
+            </div>
+            <div className="text-[10px] leading-tight text-ink-500">
+              {overview?.orchestrator.role ?? 'Decides what the work is and who should do it'}
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="rounded-lg border border-ink-700 bg-ink-900/80">
         <h2 className="flex items-center gap-2 border-b border-ink-700 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-ink-400">
-          Agent fleet
+          Specialists
           <span className="ml-auto font-mono text-[10px] normal-case tracking-normal text-ink-500">
             {overview?.fleet.length ?? 0}
           </span>

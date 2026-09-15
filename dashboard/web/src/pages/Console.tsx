@@ -133,7 +133,7 @@ export default function Console() {
   };
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+    <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
       <Panel
         title={
           <div className="flex items-center gap-1">
@@ -159,7 +159,7 @@ export default function Console() {
           </span>
         }
       >
-        <div className={`flex h-[calc(100vh-230px)] flex-col ${view === 'preview' ? 'hidden' : ''}`}>
+        <div className={`flex min-h-0 flex-1 flex-col ${view === 'preview' ? 'hidden' : ''}`}>
           <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
             {turns.length === 0 ? (
               <Welcome onPick={setInput} />
@@ -233,7 +233,7 @@ export default function Console() {
         </div>
 
         {view === 'preview' && (
-          <div className="h-[calc(100vh-230px)] bg-ink-850">
+          <div className="min-h-0 flex-1 bg-ink-850">
             <iframe
               src="/app/"
               title="The product the fleet maintains"
