@@ -152,10 +152,49 @@ export function createGithubServer(ctx: GithubToolContext) {
       return text(
         res.data.length
           ? res.data
-              .map((i) => `#${i.number} [${i.state}] ${i.title}\n  ${(i.body ?? '').slice(0, 160)}`)
+              .map((i) => `#${i.number} [${i.state}] ${i.title}\n  ${(i.body ?? '').slice(0, 400)}`)
               .join('\n\n')
           : 'No issues matched.',
       );
+    },
+  );
+
+  /**
+   * One issue, in full.
+   *
+   * list_issues truncates each body so a listing stays readable, which is right
+   * for a listing and wrong for the thing the mission is about: asked to
+   * "resolve issue #4" the orchestrator would work from the first 160
+   * characters of the description and never know what else it said.
+   */
+  const getIssue = tool(
+    'get_issue',
+    'Read one issue in full - title, body, labels and state. Use this before working on a ticket.',
+    {
+      number: z.number().int().positive().describe('The issue number, e.g. 4 for #4.'),
+    },
+    async ({ number }) => {
+      const gh = octokit();
+      if (!gh) return text(`No GitHub token configured, so issue #${number} cannot be read.`);
+      try {
+        const { data } = await gh.issues.get({ ...repoRef, issue_number: number });
+        const labels = (data.labels ?? [])
+          .map((l) => (typeof l === 'string' ? l : l.name))
+          .filter(Boolean)
+          .join(', ');
+        return text(
+          [
+            `#${data.number} [${data.state}] ${data.title}`,
+            labels ? `Labels: ${labels}` : 'Labels: none',
+            `URL: ${data.html_url}`,
+            '',
+            data.body?.trim() || '(no description)',
+          ].join('\n'),
+        );
+      } catch (err: any) {
+        if (err?.status === 404) return text(`Issue #${number} does not exist in this repository.`);
+        throw err;
+      }
     },
   );
 
@@ -307,6 +346,6 @@ export function createGithubServer(ctx: GithubToolContext) {
     name: 'github',
     version: '1.0.0',
     instructions: `GitHub integration for ${repoRef.owner}/${repoRef.repo}: issues as the ticketing system, and pull requests as the human review gate.`,
-    tools: [getRepoContext, listIssues, createIssue, commentIssue, openPullRequest],
+    tools: [getRepoContext, listIssues, getIssue, createIssue, commentIssue, openPullRequest],
   });
 }

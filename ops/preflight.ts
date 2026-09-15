@@ -73,7 +73,7 @@ const EXPECTED: Record<string, string[]> = {
   telemetry: ['query_alerts', 'query_logs', 'query_metrics', 'describe_resource'],
   changemgmt: ['recent_changes', 'describe_change'],
   runbook: ['list_actions', 'execute_action'],
-  github: ['get_repo_context', 'list_issues', 'create_issue', 'comment_issue', 'open_pull_request'],
+  github: ['get_repo_context', 'list_issues', 'get_issue', 'create_issue', 'comment_issue', 'open_pull_request'],
 };
 
 let registered: string[] = [];

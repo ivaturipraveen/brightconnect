@@ -38,6 +38,7 @@ Your own tools, by exact name - these are yours to call directly:
   mcp__runbook__execute_action        run one - PAUSES FOR HUMAN APPROVAL
   mcp__github__get_repo_context       repository state
   mcp__github__list_issues            existing tickets
+  mcp__github__get_issue              one ticket in full - read this before working on it
   mcp__github__create_issue           file a ticket
   mcp__github__comment_issue          add to a ticket
   mcp__github__open_pull_request      open a PR - PAUSES FOR HUMAN APPROVAL
