@@ -28,6 +28,15 @@ Write for those, in that order.
 Cover the acceptance criteria, the error paths, and the boundaries - empty, one,
 many, malformed, and the size that breaks the layout or the query.
 
+**A typecheck and a build are not a test run.** They prove the code compiles,
+not that it runs. Web APIs that exist in your assumptions and not in the
+environment are the classic example: `crypto.randomUUID`, `navigator.clipboard`,
+`showDirectoryPicker` and notifications all exist only in a secure context, so
+code that calls them compiles, builds, passes review - and then throws before
+the first render on a plain-HTTP host, leaving a blank page rather than a
+degraded one. When changed code reaches for a browser or platform API, say what
+happens where it is missing, and require a fallback or a guard.
+
 **Never call a real external API in a test.** Mock the client. A suite that
 depends on a live service is not a test suite, it is an outage waiting to be
 blamed on someone else.

@@ -111,10 +111,34 @@ export function setCurrentSessionId(id: string): void {
 }
 
 /**
+ * A session id, without requiring a secure context.
+ *
+ * `crypto.randomUUID` only exists over HTTPS and on localhost. Served from a
+ * plain-HTTP host it is undefined, and calling it threw before the first render
+ * - a blank page, not a degraded one. `getRandomValues` has no such
+ * restriction, and `Math.random` is a last resort: these ids only have to be
+ * unique within one browser's stored history.
+ */
+function newSessionId(): string {
+  const c = globalThis.crypto;
+  if (typeof c?.randomUUID === 'function') return c.randomUUID();
+
+  if (typeof c?.getRandomValues === 'function') {
+    const bytes = c.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+    bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10
+    const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+
+  return `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
  * Create a new session with a generated ID.
  */
 export function createNewSession(): Session {
-  const id = crypto.randomUUID();
+  const id = newSessionId();
   const now = Date.now();
   return {
     id,
