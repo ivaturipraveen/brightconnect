@@ -12,9 +12,11 @@ import { useEffect, useRef } from 'react';
 
 export interface TerminalLine {
   at: number;
-  kind: 'prompt' | 'text' | 'thinking' | 'tool' | 'result' | 'mission' | 'error' | 'system';
+  kind: 'prompt' | 'text' | 'thinking' | 'tool' | 'result' | 'mission' | 'document' | 'error' | 'system';
   text: string;
   detail?: string;
+  /** Rendered as a link when present - a mission, or a generated document. */
+  href?: string;
 }
 
 const STYLE: Record<TerminalLine['kind'], { marker: string; className: string }> = {
@@ -24,6 +26,7 @@ const STYLE: Record<TerminalLine['kind'], { marker: string; className: string }>
   tool:     { marker: '⟳', className: 'text-warn-400' },
   result:   { marker: '←', className: 'text-ink-400' },
   mission:  { marker: '»', className: 'text-ok-400' },
+  document: { marker: '⇩', className: 'text-signal-300' },
   error:    { marker: '✗', className: 'text-crit-400' },
   system:   { marker: '·', className: 'text-ink-500' },
 };
@@ -49,10 +52,10 @@ export default function TerminalLog({ lines, live }: { lines: TerminalLine[]; li
     return (
       <div className="flex h-full items-center justify-center px-6 text-center">
         <div>
-          <div className="font-mono text-[13px] text-ink-400">No execution yet.</div>
+          <div className="font-mono text-[13px] text-ink-400">Ready.</div>
           <div className="mt-1 text-[12px] text-ink-500">
-            Send something in the console and every tool call, result and mission event
-            appears here as it happens.
+            Type below. Every step the fleet takes — each tool call, its result, and the
+            missions it starts — appears here as it happens.
           </div>
         </div>
       </div>
@@ -68,7 +71,18 @@ export default function TerminalLog({ lines, live }: { lines: TerminalLine[]; li
             <span className="shrink-0 select-none text-ink-600">{clock(l.at)}</span>
             <span className={`shrink-0 select-none ${style.className}`}>{style.marker}</span>
             <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">
-              <span className={style.className}>{l.text}</span>
+              {l.href ? (
+                <a
+                  href={l.href}
+                  target={l.href.startsWith('http') ? '_blank' : undefined}
+                  rel="noreferrer"
+                  className={`${style.className} underline decoration-dotted underline-offset-2 hover:decoration-solid`}
+                >
+                  {l.text}
+                </a>
+              ) : (
+                <span className={style.className}>{l.text}</span>
+              )}
               {l.detail && <span className="text-ink-500"> {l.detail}</span>}
             </span>
           </div>
