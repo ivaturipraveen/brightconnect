@@ -39,6 +39,10 @@ export interface Mission {
   costUsd: number;
   inputTokens: number;
   outputTokens: number;
+  /** Prompt-cache hits: tokens read from cache instead of re-billed at full rate. */
+  cacheReadTokens: number;
+  /** Tokens written into the prompt cache, billed once so later turns are cheap. */
+  cacheWriteTokens: number;
   numTurns: number;
   durationMs: number;
   createdAt: string;

@@ -7,7 +7,7 @@
  */
 import { config } from '../config.ts';
 import { createDriver, type Driver } from './driver.ts';
-import { schemaFor } from './schema.ts';
+import { migrationsFor, schemaFor } from './schema.ts';
 import type {
   Alert, AgentRun, Approval, Artifact, Mission, MissionEvent, MissionStatus,
 } from '../types.ts';
@@ -27,6 +27,15 @@ export async function initDatabase(): Promise<Driver> {
   });
   for (const statement of schemaFor(driver.dialect)) {
     await driver.exec(statement);
+  }
+  // Additive column migrations. Expected to fail with "already exists" on every
+  // boot after the one that applied them, so a failure here is not fatal.
+  for (const statement of migrationsFor(driver.dialect)) {
+    try {
+      await driver.exec(statement);
+    } catch {
+      /* column is already there */
+    }
   }
   return driver;
 }
@@ -48,6 +57,8 @@ const missionFromRow = (r: any): Mission => ({
   costUsd: Number(r.cost_usd ?? 0),
   inputTokens: Number(r.input_tokens ?? 0),
   outputTokens: Number(r.output_tokens ?? 0),
+  cacheReadTokens: Number(r.cache_read_tokens ?? 0),
+  cacheWriteTokens: Number(r.cache_write_tokens ?? 0),
   numTurns: Number(r.num_turns ?? 0),
   durationMs: Number(r.duration_ms ?? 0),
   createdAt: r.created_at,
@@ -96,11 +107,13 @@ export const missions = {
     await driver.run(
       `UPDATE missions
           SET status = ?, summary = ?, error = ?, cost_usd = ?, input_tokens = ?,
-              output_tokens = ?, num_turns = ?, duration_ms = ?, session_id = ?, finished_at = ?
+              output_tokens = ?, cache_read_tokens = ?, cache_write_tokens = ?,
+              num_turns = ?, duration_ms = ?, session_id = ?, finished_at = ?
         WHERE id = ?`,
       [
         patch.status, patch.summary ?? null, patch.error ?? null, patch.costUsd ?? 0,
-        patch.inputTokens ?? 0, patch.outputTokens ?? 0, patch.numTurns ?? 0,
+        patch.inputTokens ?? 0, patch.outputTokens ?? 0,
+        patch.cacheReadTokens ?? 0, patch.cacheWriteTokens ?? 0, patch.numTurns ?? 0,
         patch.durationMs ?? 0, patch.sessionId ?? null, now(), id,
       ],
     );
@@ -407,5 +420,29 @@ export const alerts = {
 
   async setStatus(id: string, status: Alert['status']) {
     await driver.run(`UPDATE alerts SET status = ? WHERE id = ?`, [status, id]);
+  },
+};
+
+/* ---------------------------------------------------------------- settings */
+
+/**
+ * Settings changed from the dashboard rather than the environment.
+ *
+ * Deliberately a key/value table: these are a handful of operator choices, not
+ * a domain model, and giving each one a column means a schema change every
+ * time somebody wants a new toggle.
+ */
+export const settings = {
+  async get(key: string): Promise<string | undefined> {
+    const rows = await driver.query(`SELECT value FROM settings WHERE key = ?`, [key]);
+    return rows[0]?.value as string | undefined;
+  },
+
+  async set(key: string, value: string): Promise<void> {
+    await driver.run(
+      `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
+      [key, value, now()],
+    );
   },
 };

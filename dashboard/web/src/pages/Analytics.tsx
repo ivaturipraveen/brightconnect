@@ -37,6 +37,12 @@ export default function Analytics() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Big label="Total spend" value={fmtCost(t.spendUsd)} hint={`${fmtCost(t.avgSpendUsd)} per mission`} />
         <Big label="Tokens" value={fmtTokens(totalTokens)} hint={`${fmtTokens(t.inputTokens)} in · ${fmtTokens(t.outputTokens)} out`} />
+        <Big
+          label="Prompt cache"
+          value={`${t.cacheHitRate}%`}
+          hint={`${fmtTokens(t.cacheReadTokens)} read · ${fmtTokens(t.cacheWriteTokens)} written`}
+          tone={t.cacheHitRate >= 50 ? 'ok' : undefined}
+        />
         <Big label="Missions" value={t.missions} hint={`${t.active} active · ${t.succeeded} succeeded`} />
         <Big
           label="Success rate"
@@ -52,7 +58,7 @@ export default function Analytics() {
             {d.models.inUse.map((m) => (
               <li key={m.model} className="flex items-center gap-3 px-4 py-2.5">
                 <span className="font-mono text-[12.5px] text-ink-100">{m.model}</span>
-                {m.model === d.models.orchestrator && <Badge tone="think">orchestrator</Badge>}
+                {m.model === d.models.platform && <Badge tone="think">platform model</Badge>}
                 <span className="ml-auto text-[12px] text-ink-400">
                   {m.agents} agent{m.agents === 1 ? '' : 's'}
                 </span>
@@ -60,8 +66,8 @@ export default function Analytics() {
             ))}
           </ul>
           <p className="px-4 py-2.5 text-[11px] leading-relaxed text-ink-500">
-            Change a model per agent on the Agent Fleet page. Cheaper models suit retrieval and
-            summarising; reserve the expensive ones for synthesis and architecture.
+            One model runs the orchestrator and all nineteen specialists. Change it on the
+            Agent Fleet page; it applies to the whole application from the next mission.
           </p>
         </Panel>
 
@@ -115,7 +121,6 @@ export default function Analytics() {
             <thead className="sticky top-0 bg-ink-900">
               <tr className="border-b border-ink-700 text-left text-[11px] uppercase tracking-wide text-ink-400">
                 <th className="px-4 py-2 font-medium">Agent</th>
-                <th className="px-3 py-2 font-medium">Model</th>
                 <th className="px-3 py-2 text-right font-medium">Runs</th>
                 <th className="px-4 py-2 text-right font-medium">Succeeded</th>
               </tr>
@@ -127,9 +132,6 @@ export default function Analytics() {
                     <span className="text-[12.5px] font-medium text-ink-100">{a.name}</span>
                     <span className="ml-2 text-[11px] text-ink-400">{a.title}</span>
                     <span className="ml-2 font-mono text-[10px] text-ink-500">{a.id}</span>
-                  </td>
-                  <td className="px-3 py-2 font-mono text-[11px] text-ink-400">
-                    {a.model.replace('claude-', '')}
                   </td>
                   <td className="px-3 py-2 text-right font-mono tabular-nums text-ink-300">
                     {a.runs || <span className="text-ink-600">—</span>}

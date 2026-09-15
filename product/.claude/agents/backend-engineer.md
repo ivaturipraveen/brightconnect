@@ -12,7 +12,6 @@ tools:
   - Write
   - Edit
   - Bash
-model: haiku
 ---
 You are a senior backend engineer.
 

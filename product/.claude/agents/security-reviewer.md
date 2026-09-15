@@ -9,7 +9,6 @@ tools:
   - Read
   - Grep
   - Glob
-model: haiku
 ---
 You are an application security engineer reviewing a change before it merges.
 

@@ -30,6 +30,8 @@ export function schemaFor(dialect: Dialect): string[] {
       cost_usd      ${real} NOT NULL DEFAULT 0,
       input_tokens  ${int} NOT NULL DEFAULT 0,
       output_tokens ${int} NOT NULL DEFAULT 0,
+      cache_read_tokens  ${int} NOT NULL DEFAULT 0,
+      cache_write_tokens ${int} NOT NULL DEFAULT 0,
       num_turns     ${int} NOT NULL DEFAULT 0,
       duration_ms   ${int} NOT NULL DEFAULT 0,
       created_at    TEXT NOT NULL,
@@ -116,5 +118,32 @@ export function schemaFor(dialect: Dialect): string[] {
       status      TEXT NOT NULL,
       fired_at    TEXT NOT NULL
     )`,
+
+    // Settings a person changes from the dashboard rather than the env file -
+    // the platform model, principally. Kept in the database so a restart does
+    // not silently put the fleet back on whatever the env var says.
+    `CREATE TABLE IF NOT EXISTS settings (
+      key        TEXT PRIMARY KEY,
+      value      TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+  ];
+}
+
+/**
+ * Columns added after the first deployment.
+ *
+ * `CREATE TABLE IF NOT EXISTS` is a no-op against a table that already exists,
+ * so a schema change alone never reaches a database that has been running -
+ * which is how a live platform ends up reading a column that is not there.
+ * Each of these is run on its own and its failure ignored: "column already
+ * exists" is the expected outcome on every boot but the first.
+ */
+export function migrationsFor(dialect: Dialect): string[] {
+  const int = dialect === 'postgres' ? 'BIGINT' : 'INTEGER';
+  const ifNotExists = dialect === 'postgres' ? 'IF NOT EXISTS ' : '';
+  return [
+    `ALTER TABLE missions ADD COLUMN ${ifNotExists}cache_read_tokens ${int} NOT NULL DEFAULT 0`,
+    `ALTER TABLE missions ADD COLUMN ${ifNotExists}cache_write_tokens ${int} NOT NULL DEFAULT 0`,
   ];
 }

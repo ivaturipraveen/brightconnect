@@ -31,7 +31,7 @@ export default function Incidents() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="h-full space-y-5 overflow-y-auto pb-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-ink-100">Incidents</h1>

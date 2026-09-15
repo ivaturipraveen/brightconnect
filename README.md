@@ -226,15 +226,21 @@ description: "Searches and correlates logs around an incident window..."
 tools:
   - mcp__telemetry__query_logs
   - mcp__telemetry__query_metrics
-model: haiku
 ---
 You are an SRE analysing logs during a live incident.
 ...
 ```
 
-Two ways to edit: the file directly, or **the Fleet page in the console** — click
-any agent to open its definition, edit, and save. Saves are validated first; a
-file that would not load is rejected and the original is left untouched.
+Two ways to edit: the file directly, or **the Fleet page in the console** — open
+an agent, click **Edit prompt**, and save. The editor opens read-only, because
+these are read far more often than they are changed and a stray keystroke should
+not alter how the fleet behaves. Saves are validated first; a file that would not
+load is rejected and the original is left untouched.
+
+The orchestrator's own brief is editable the same way, from the same page. It
+lives in `dashboard/server/orchestrator/orchestrator.md` and uses placeholders —
+`{{ROSTER_SDLC}}`, `{{TOOLS}}`, `{{PROJECT_MAP}}` — for the sections generated
+from the live fleet, so adding an agent updates its roster with no edit at all.
 
 Changes apply to the **next** mission. A running mission keeps the definitions it
 started with, so editing mid-demo cannot destabilise a run in progress.
@@ -244,17 +250,38 @@ Claude Code CLI directly — the fleet is not locked inside this platform.
 
 ### Choosing a model
 
-`model:` in frontmatter takes `haiku`, `sonnet`, `opus`, or a full model id.
-Omit it and the agent falls back to `AGENT_MODEL`.
+One model runs the whole application — the orchestrator and all nineteen
+specialists — set from the **Model** panel on the Fleet page and persisted to the
+database, so it survives a restart. It is the same setting Claude Code itself
+uses, so the fleet behaves identically from the CLI.
 
 | Model | $/MTok in/out | Use for |
 |---|---|---|
-| `claude-haiku-4-5` | $1 / $5 | Cheapest. Retrieval and summarisation agents. |
-| `claude-sonnet-5` | $2 / $10 | Middle ground. |
+| `claude-haiku-4-5` | $1 / $5 | Cheapest. Fine for retrieval, log reading, drafting. |
+| `claude-sonnet-5` | $2 / $10 | Better code changes and sharper review. |
 | `claude-opus-5` | $5 / $25 | Hardest reasoning — RCA synthesis, architecture. |
 
-Mixing is the point: an agent that greps logs does not need the model that
-synthesises a root cause from three conflicting reports.
+A per-agent dropdown was the obvious design and the wrong one: all nineteen were
+always set to the same thing, and the page stopped being about what the agents do.
+
+### Prompt caching
+
+The orchestrator's system prompt is sent as a `string[]` split by
+`SYSTEM_PROMPT_DYNAMIC_BOUNDARY`, so the ~3,300-token static half — roster, rules,
+tool names — is cacheable *across* missions. Only the workspace path, the one
+per-mission fact, sits after the marker. The console prompt is split the same way,
+with the attachment list after the boundary.
+
+Measured on three consecutive runs with different workspace paths:
+
+| | cache written | cache read |
+|---|---|---|
+| Path baked into one string | 5,203 | 4,828 |
+| Path after the boundary | 2,246 | 7,785 |
+
+Cache reads bill at a tenth of the input rate, so the Analytics page tracks
+`cacheReadTokens` and `cacheWriteTokens` separately from input — folding them
+together would make the saving invisible.
 
 ---
 

@@ -12,7 +12,6 @@ tools:
   - Write
   - Edit
   - Bash
-model: haiku
 ---
 You are a senior frontend engineer. You build the interface people actually use,
 which means the details that feel cosmetic are the product.

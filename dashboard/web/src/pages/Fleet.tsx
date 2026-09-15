@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
-import { api, type FleetMember } from '../lib/api.ts';
+import { api, type FleetMember, type ModelSettings } from '../lib/api.ts';
 import { Badge, Button, Empty, Panel } from '../components/ui.tsx';
-import AgentEditor from '../components/AgentEditor.tsx';
+import PromptEditor from '../components/AgentEditor.tsx';
 
 /**
  * The fleet, and the controls to change it.
  *
- * Two levels of editing on purpose: the model is a dropdown, because swapping a
- * cheap agent for a capable one is the change people actually make and it
- * should not require opening a YAML file; everything else opens the definition,
- * because tools and instructions deserve to be read in full before they change.
+ * The model is one setting for the whole platform rather than a dropdown beside
+ * each of twenty names: they were always set to the same thing, and twenty
+ * identical dropdowns turned a page about what the agents *do* into a page
+ * about model selection.
  */
 
 const DEPARTMENTS = [
@@ -18,51 +18,155 @@ const DEPARTMENTS = [
   { id: 'platform', label: 'Platform', blurb: 'Ticketing, release and cost.' },
 ] as const;
 
-const MODELS = [
-  { value: 'haiku', label: 'Haiku', hint: 'cheapest · retrieval, summarising' },
-  { value: 'sonnet', label: 'Sonnet', hint: 'middle ground' },
-  { value: 'opus', label: 'Opus', hint: 'hardest reasoning' },
-] as const;
-
-const shortModel = (m: string) => m.replace('claude-', '').replace(/-\d+(-\d+)?$/, '');
+const ORCHESTRATOR = {
+  name: 'Ada',
+  title: 'Orchestrator',
+  id: 'orchestrator',
+  role: 'Reads the request, decides what kind of work it is, engages the specialists it needs, and holds them to the evidence.',
+  tools: [
+    'Agent', 'telemetry.query_alerts', 'telemetry.query_logs', 'telemetry.query_metrics',
+    'changemgmt.recent_changes', 'runbook.execute_action', 'github.create_issue',
+    'github.open_pull_request',
+  ],
+};
 
 export default function Fleet() {
   const [fleet, setFleet] = useState<FleetMember[]>([]);
+  const [models, setModels] = useState<ModelSettings | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
-  const load = () => void api.fleet().then(setFleet).catch(() => {});
+  const load = () => {
+    void api.fleet().then(setFleet).catch(() => {});
+    void api.modelSettings().then(setModels).catch(() => {});
+  };
   useEffect(load, []);
 
-  const changeModel = async (id: string, model: 'haiku' | 'sonnet' | 'opus') => {
-    setBusy(id);
-    setNote(null);
+  const flash = (text: string) => {
+    setNote(text);
+    setTimeout(() => setNote(null), 5000);
+  };
+
+  const changePlatformModel = async (alias: string) => {
+    setBusy(true);
     try {
-      await api.setAgentModel(id, model);
-      setNote(`${id} now runs on ${model}. Applies to the next mission.`);
+      const res = await api.setPlatformModel(alias);
+      flash(`The fleet now runs on ${res.alias}. Applies to the next mission.`);
       load();
     } catch (err) {
-      setNote(err instanceof Error ? err.message : String(err));
+      flash(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusy(null);
-      setTimeout(() => setNote(null), 4000);
+      setBusy(false);
     }
   };
 
+  const current = models?.choices.find((c) => c.id === models.model);
+
   return (
-    <div className="space-y-5">
+    <div className="h-full space-y-5 overflow-y-auto pb-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-ink-100">Agent fleet</h1>
           <p className="mt-0.5 max-w-3xl text-[13px] text-ink-400">
-            Each agent has its own instructions, its own tools, and a scope it cannot exceed.
-            Change the model here; open an agent to change what it does and what it can reach.
-            Edits apply to the next mission — a running one keeps the definitions it started with.
+            Twenty agents: one orchestrator that decides, and nineteen specialists that do the
+            work. Each has its own instructions, its own tools, and a scope it cannot exceed.
+            Open an agent to change what it does and what it can reach. Edits apply to the next
+            mission — a running one keeps the definitions it started with.
           </p>
         </div>
         {note && <Badge tone="ok">{note}</Badge>}
       </div>
+
+      {/* One model for the platform. */}
+      <Panel
+        title="Model"
+        actions={<span className="text-[11px] text-ink-500">one setting, all 20 agents</span>}
+        dense
+      >
+        {!models ? (
+          <div className="p-4"><Empty>Loading…</Empty></div>
+        ) : (
+          <div className="px-4 py-3">
+            <div className="flex flex-wrap gap-2">
+              {models.choices.map((c) => {
+                const active = c.id === models.model;
+                return (
+                  <button
+                    key={c.alias}
+                    type="button"
+                    disabled={busy || active}
+                    onClick={() => void changePlatformModel(c.alias)}
+                    className={`min-w-[190px] flex-1 rounded-lg border px-3 py-2.5 text-left transition ${
+                      active
+                        ? 'border-signal-500 bg-signal-500/10'
+                        : 'border-ink-700 bg-ink-850 hover:border-ink-600 disabled:opacity-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[13px] font-semibold ${active ? 'text-signal-300' : 'text-ink-100'}`}>
+                        {c.label}
+                      </span>
+                      {active && <Badge tone="ok">in use</Badge>}
+                    </div>
+                    <div className="mt-1 text-[11px] leading-snug text-ink-400">{c.hint}</div>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2.5 text-[11px] leading-relaxed text-ink-500">
+              The orchestrator and all nineteen specialists run on{' '}
+              <span className="font-mono text-ink-300">{current?.label ?? models.model}</span>.
+              One model for the whole application — this is the setting Claude Code itself uses,
+              so the fleet behaves the same way from the CLI. Saved, so it survives a restart.
+            </p>
+          </div>
+        )}
+      </Panel>
+
+      {/* The orchestrator is not one of the fleet - it is what decides which of
+          them to engage - but leaving it off the roster made the thing doing
+          the deciding the one thing you could not see. */}
+      <Panel
+        title={
+          <span className="flex items-baseline gap-2">
+            Orchestration
+            <span className="text-[11px] font-normal normal-case text-ink-400">
+              Decides what the work is and who does it.
+            </span>
+          </span>
+        }
+        actions={<span className="text-[11px] text-ink-500">1 agent</span>}
+        dense
+      >
+        <div className="flex flex-wrap items-start gap-3 border-l-2 border-signal-500 px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[14px] font-semibold text-ink-100">{ORCHESTRATOR.name}</span>
+              <span className="text-[12px] text-ink-300">{ORCHESTRATOR.title}</span>
+              <span className="font-mono text-[11px] text-ink-500">{ORCHESTRATOR.id}</span>
+              <Badge tone="think">delegates to all 19</Badge>
+            </div>
+            <p className="mt-0.5 text-[12px] leading-snug text-ink-400">{ORCHESTRATOR.role}</p>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {ORCHESTRATOR.tools.map((t) => (
+                <span key={t} className="rounded bg-ink-800 px-1.5 py-0.5 font-mono text-[10px] text-ink-400">
+                  {t}
+                </span>
+              ))}
+              <span className="px-1 py-0.5 text-[10px] text-ink-500">+ the whole toolset</span>
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-ink-500">
+              The only agent that acts outside the platform: it files the tickets, opens the pull
+              requests and runs remediation, so every external side effect has one accountable
+              actor.
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button onClick={() => setEditing('orchestrator')}>Edit</Button>
+          </div>
+        </div>
+      </Panel>
 
       {DEPARTMENTS.map((dept) => {
         const members = fleet.filter((m) => m.department === dept.id);
@@ -119,19 +223,6 @@ export default function Fleet() {
                     </div>
 
                     <div className="flex shrink-0 items-center gap-2">
-                      <label className="sr-only" htmlFor={`model-${m.id}`}>Model for {m.name}</label>
-                      <select
-                        id={`model-${m.id}`}
-                        value={MODELS.find((x) => shortModel(m.model).startsWith(x.value))?.value ?? 'haiku'}
-                        disabled={busy === m.id}
-                        onChange={(e) => void changeModel(m.id, e.target.value as 'haiku' | 'sonnet' | 'opus')}
-                        className="rounded-md border border-ink-600 bg-ink-850 px-2 py-1.5 text-[12px] text-ink-200 focus:border-signal-500 focus:outline-none disabled:opacity-50"
-                        title={MODELS.find((x) => shortModel(m.model).startsWith(x.value))?.hint}
-                      >
-                        {MODELS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
                       <Button onClick={() => setEditing(m.id)}>Edit</Button>
                     </div>
                   </li>
@@ -149,7 +240,7 @@ export default function Fleet() {
       </p>
 
       {editing && (
-        <AgentEditor agentId={editing} onClose={() => setEditing(null)} onSaved={load} />
+        <PromptEditor agentId={editing} onClose={() => setEditing(null)} onSaved={load} />
       )}
     </div>
   );

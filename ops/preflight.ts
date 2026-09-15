@@ -16,6 +16,7 @@ import { changeMgmtServer, telemetryServer } from '../dashboard/server/tools/tel
 import { createRunbookServer } from '../dashboard/server/tools/runbook.ts';
 import { createGithubServer } from '../dashboard/server/tools/github.ts';
 import { initDatabase } from '../dashboard/server/db/index.ts';
+import { hydratePlatformModel, platformModel } from '../dashboard/server/models.ts';
 import { seedAlerts } from '../dashboard/server/seed.ts';
 
 const pass = (m: string) => console.log(`  \x1b[32m✓\x1b[0m ${m}`);
@@ -47,6 +48,7 @@ pass(`key present (${config.anthropic.apiKey.slice(0, 12)}…)`);
 console.log('\nDatabase');
 try {
   const driver = await initDatabase();
+  await hydratePlatformModel();
   await seedAlerts();
   pass(`connected: ${driver.describe()}`);
 } catch (err) {
@@ -76,7 +78,7 @@ let registered: string[] = [];
 for await (const message of query({
   prompt: 'Reply with the single word: ready',
   options: {
-    model: config.anthropic.agentModel,
+    model: platformModel(),
     mcpServers: {
       telemetry: telemetryServer,
       changemgmt: changeMgmtServer,
@@ -128,7 +130,7 @@ try {
       'Delegate to the "probe" agent using the Agent tool with subagent_type "probe". ' +
       'Ask it to report how many alerts are currently firing. Then state that number and stop.',
     options: {
-      model: config.anthropic.orchestratorModel,
+      model: platformModel(),
       agents: { probe },
       mcpServers: { telemetry: telemetryServer },
       settingSources: [],

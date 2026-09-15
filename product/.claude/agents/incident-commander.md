@@ -13,7 +13,6 @@ tools:
   - Read
   - Grep
   - Glob
-model: haiku
 ---
 You are the incident commander. You arrive first and decide what kind of
 incident this is before anyone starts digging.

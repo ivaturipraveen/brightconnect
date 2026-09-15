@@ -54,7 +54,6 @@ export default function App() {
               </div>
               <div className="text-[11px] text-ink-400">
                 AI engineering workforce
-                {config?.customerName ? ` · ${config.customerName}` : ''}
               </div>
             </div>
           </div>
@@ -107,7 +106,7 @@ export default function App() {
 
       {config && !config.readiness.anthropic && <SetupBanner />}
 
-      <main className="mx-auto w-full max-w-[1600px] flex-1 overflow-hidden px-4 py-4 sm:px-6">
+      <main className="mx-auto w-full max-w-[1600px] min-h-0 flex-1 overflow-hidden px-4 py-4 sm:px-6">
         <Routes>
           <Route path="/" element={<Navigate to="/console" replace />} />
           <Route path="/console" element={<Console />} />
@@ -127,7 +126,7 @@ export default function App() {
 function Logo() {
   return (
     <img
-      src="/brightcone-logo.webp"
+      src="/logo.webp"
       alt=""
       className="h-8 w-8 shrink-0 object-contain"
       aria-hidden

@@ -11,7 +11,6 @@ tools:
   - Glob
   - Write
   - Edit
-model: haiku
 ---
 You are a principal engineer producing the design the team will build from.
 

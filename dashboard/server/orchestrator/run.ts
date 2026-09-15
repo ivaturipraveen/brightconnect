@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { nanoid } from 'nanoid';
 import { config, hasAnthropicKey } from '../config.ts';
 import { agentDefinitions, loadFleet } from '../agents/fleet.ts';
+import { platformModel } from '../models.ts';
 import { agentRuns, alerts, approvals, artifacts, missions } from '../db/index.ts';
 import { bus } from '../bus.ts';
 import { createGithubServer } from '../tools/github.ts';
@@ -86,7 +87,7 @@ function escapesWorkspace(
   // command for paths is inherently approximate, so this errs towards allowing:
   // the sandbox below is the actual enforcement, and a false denial here breaks
   // legitimate work. (A workspace path containing a space - "New POC" - was
-  // matched as the truncated "/Users/yanthraa/Desktop/New" and denied, blocking
+  // matched as the truncated "/path/with a/space/New" and denied, blocking
   // the agent from its own workspace.)
   if (toolName === 'Bash' && typeof input.command === 'string') {
     const command = input.command.replace(/\\ /g, ' ');
@@ -199,6 +200,8 @@ export async function runMission(missionId: string): Promise<void> {
   let costUsd = 0;
   let inputTokens = 0;
   let outputTokens = 0;
+  let cacheReadTokens = 0;
+  let cacheWriteTokens = 0;
   let numTurns = 0;
   let sessionId = '';
 
@@ -261,7 +264,7 @@ export async function runMission(missionId: string): Promise<void> {
   };
 
   const options: Options = {
-    model: config.anthropic.orchestratorModel,
+    model: platformModel(),
     systemPrompt: orchestratorSystemPrompt(workspaceDir),
     agents: agentDefinitions(),
     cwd: workspaceDir,
@@ -307,6 +310,8 @@ export async function runMission(missionId: string): Promise<void> {
       costUsd,
       inputTokens,
       outputTokens,
+      cacheReadTokens,
+      cacheWriteTokens,
       numTurns,
       durationMs: Date.now() - started,
       sessionId,
@@ -329,6 +334,8 @@ export async function runMission(missionId: string): Promise<void> {
       costUsd,
       inputTokens,
       outputTokens,
+      cacheReadTokens,
+      cacheWriteTokens,
       numTurns,
       durationMs: Date.now() - started,
       sessionId,
@@ -396,9 +403,16 @@ export async function runMission(missionId: string): Promise<void> {
         if ('modelUsage' in message && message.modelUsage) {
           inputTokens = 0;
           outputTokens = 0;
+          cacheReadTokens = 0;
+          cacheWriteTokens = 0;
           for (const usage of Object.values(message.modelUsage)) {
             inputTokens += (usage as any).inputTokens ?? 0;
             outputTokens += (usage as any).outputTokens ?? 0;
+            // Counted separately: cache reads are billed at a tenth of the
+            // input rate, so folding them into inputTokens would make the
+            // saving from prompt caching invisible in the analytics.
+            cacheReadTokens += (usage as any).cacheReadInputTokens ?? 0;
+            cacheWriteTokens += (usage as any).cacheCreationInputTokens ?? 0;
           }
         }
         return;

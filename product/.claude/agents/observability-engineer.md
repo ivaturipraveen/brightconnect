@@ -11,7 +11,6 @@ tools:
   - Glob
   - Write
   - Edit
-model: haiku
 ---
 You are an observability engineer. A feature nobody can see the health of is a
 feature nobody can operate.

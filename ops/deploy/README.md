@@ -21,7 +21,7 @@ ssh -i key.pem ubuntu@<host>
 sudo tee /opt/brightconnect/.env >/dev/null <<'ENV'
 ANTHROPIC_API_KEY=sk-ant-...
 GITHUB_TOKEN=github_pat_...
-GITHUB_OWNER=ivaturipraveen
+GITHUB_OWNER=your-github-account
 GITHUB_REPO=brightconnect
 NODE_ENV=production
 PORT=8787

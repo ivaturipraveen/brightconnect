@@ -9,9 +9,10 @@
  * the codebase. Everything that changes code goes through a mission, which is
  * what produces the audit trail and the approval gates.
  */
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { query, SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from '@anthropic-ai/claude-agent-sdk';
 import type { Options } from '@anthropic-ai/claude-agent-sdk';
 import { config } from '../config.ts';
+import { platformModel } from '../models.ts';
 import { createConsoleServer, type ConsoleContext } from './tools.ts';
 import { createDocumentServer } from './documents.ts';
 import { projectMap } from '../workspace.ts';
@@ -21,8 +22,17 @@ export interface ConsoleTurn {
   content: string;
 }
 
-function systemPrompt(attachments: ConsoleContext['attachments']): string {
-  return `You are the console for ${config.productName}, an AI engineering workforce.
+/**
+ * The console's system prompt, split for the prompt cache.
+ *
+ * The console is the most-used surface in the platform - every question anyone
+ * types starts a fresh, stateless turn - so the same instructions were being
+ * re-read on every keystroke's worth of conversation. Everything up to the
+ * boundary is identical turn to turn and is served from cache; only the list of
+ * attached files, which genuinely changes, sits after it.
+ */
+function systemPrompt(attachments: ConsoleContext['attachments']): string[] {
+  const staticPrefix = `You are the console for ${config.productName}, an AI engineering workforce.
 A person types here to find out what the platform is doing, or to ask for work.
 
 Your job is to tell those two apart.
@@ -55,11 +65,13 @@ question rather than guessing.
 ${projectMap()}
 
 Be brief and concrete. You are a status line and a dispatcher, not a chat
-companion. No preamble, no restating the question back.${
-    attachments.length
-      ? `\n\nAttached to this conversation: ${attachments.map((a) => a.name).join(', ')}. Read them before answering questions about them.`
-      : ''
-  }`;
+companion. No preamble, no restating the question back.`;
+
+  const attached = attachments.length
+    ? `Attached to this conversation: ${attachments.map((a) => a.name).join(', ')}. Read them before answering questions about them.`
+    : 'Nothing is attached to this conversation.';
+
+  return [staticPrefix, SYSTEM_PROMPT_DYNAMIC_BOUNDARY, attached];
 }
 
 export interface ConsoleEvent {
@@ -83,7 +95,7 @@ export async function* runConsoleTurn(
     .join('\n\n');
 
   const options: Options = {
-    model: config.anthropic.orchestratorModel,
+    model: platformModel(),
     systemPrompt: systemPrompt(ctx.attachments),
     cwd: scratchDir,
     settingSources: [],

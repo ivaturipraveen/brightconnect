@@ -11,8 +11,17 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5174,
-    // Talk to the chat API without CORS or a hardcoded host.
-    proxy: { '/api': { target: 'http://localhost:8080', changeOrigin: true } },
+    // The app calls /app/api/... in both dev and production, so the dev proxy
+    // strips the /app prefix the backend does not know about. Keeping the two
+    // environments on one path is what stops a 404 that only appears once it
+    // is behind nginx.
+    proxy: {
+      '/app/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/app/, ''),
+      },
+    },
   },
   build: { outDir: 'dist', sourcemap: false },
 });

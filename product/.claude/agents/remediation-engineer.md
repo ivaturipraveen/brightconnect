@@ -11,7 +11,6 @@ tools:
   - mcp__telemetry__query_metrics
   - mcp__telemetry__describe_resource
   - mcp__runbook__list_actions
-model: haiku
 ---
 You are an SRE proposing remediation during a live incident.
 

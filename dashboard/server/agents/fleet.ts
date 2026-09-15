@@ -15,7 +15,6 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import type { AgentDefinition } from '@anthropic-ai/claude-agent-sdk';
-import { config } from '../config.ts';
 
 export type Department = 'sdlc' | 'sre' | 'platform';
 
@@ -31,6 +30,7 @@ export interface FleetMember {
   role: string;
   /** The editable prompt body, without the generated preamble. */
   body: string;
+  /** Resolved model id, or 'inherit' when it follows the platform model. */
   model: string;
   definition: AgentDefinition;
 }
@@ -106,16 +106,20 @@ export function parseAgentFile(raw: string, id: string): { fm: Frontmatter; body
 }
 
 /**
- * Model aliases keep the files readable and let one env var re-point the whole
- * fleet. A full model id in the file wins over the alias.
+ * An agent names a model only when it needs a different one.
+ *
+ * The default is to inherit the platform model, so changing one setting moves
+ * the whole fleet - which is what people actually want - while an agent that
+ * genuinely needs more capability than the rest can still say so in its own
+ * file and keep it across a platform-wide change.
  */
 function resolveModel(alias: string | undefined): string {
-  const requested = (alias ?? config.anthropic.agentModel).trim();
+  const requested = (alias ?? 'inherit').trim();
+  if (requested === '' || requested === 'inherit') return 'inherit';
   const aliases: Record<string, string> = {
     haiku: 'claude-haiku-4-5',
     sonnet: 'claude-sonnet-5',
     opus: 'claude-opus-5',
-    inherit: 'inherit',
   };
   return aliases[requested] ?? requested;
 }

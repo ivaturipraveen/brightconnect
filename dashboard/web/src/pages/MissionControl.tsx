@@ -64,7 +64,7 @@ export default function MissionControl() {
   const done = missions.filter((m) => !active.includes(m));
 
   return (
-    <div className="space-y-5">
+    <div className="h-full space-y-5 overflow-y-auto pb-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-ink-100">Mission Control</h1>

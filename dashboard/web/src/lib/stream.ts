@@ -8,44 +8,111 @@ type Handlers = {
 };
 
 /**
- * Subscribe to the server's activity stream.
+ * One activity stream, shared by every component that wants it.
  *
- * Handlers are held in a ref so a parent re-render does not tear down and
- * rebuild the EventSource - reconnecting mid-mission would drop events.
+ * Each page used to open its own EventSource, and the shell opened one too, so
+ * two or three were live at once against a browser limit of six connections per
+ * origin over HTTP/1.1 - which is how the header ends up stuck on
+ * "reconnecting" while ordinary API calls queue behind streams that never
+ * finish. One connection, fanned out to subscribers, with the socket closed
+ * when the last of them goes away.
  */
+
+type Listener = { handlers: Handlers };
+
+const listeners = new Set<Listener>();
+const statusListeners = new Set<(connected: boolean) => void>();
+
+let source: EventSource | null = null;
+let connected = false;
+let retry = 0;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+function setConnected(next: boolean) {
+  if (connected === next) return;
+  connected = next;
+  for (const fn of statusListeners) fn(next);
+}
+
+function fanOut(pick: (h: Handlers) => ((payload: any) => void) | undefined, raw: string) {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    return; // a malformed frame should not take the stream down
+  }
+  for (const l of listeners) pick(l.handlers)?.(payload);
+}
+
+function connect() {
+  if (source || listeners.size === 0) return;
+
+  const es = new EventSource('/api/stream');
+  source = es;
+
+  es.addEventListener('open', () => {
+    retry = 0;
+    setConnected(true);
+  });
+
+  // EventSource reconnects on its own, but only while the connection was
+  // cleanly lost. A server that is down answers immediately and it gives up,
+  // so the retry is ours: back off, then rebuild the socket.
+  es.addEventListener('error', () => {
+    setConnected(false);
+    if (es.readyState !== EventSource.CLOSED) return;
+    es.close();
+    if (source === es) source = null;
+    if (listeners.size === 0 || retryTimer) return;
+    const delay = Math.min(1000 * 2 ** retry, 15_000);
+    retry += 1;
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      connect();
+    }, delay);
+  });
+
+  es.addEventListener('event', (ev) => fanOut((h) => h.onEvent, (ev as MessageEvent).data));
+  es.addEventListener('mission', (ev) => fanOut((h) => h.onMission, (ev as MessageEvent).data));
+  es.addEventListener('approval', (ev) => fanOut((h) => h.onApproval, (ev as MessageEvent).data));
+}
+
+function release() {
+  if (listeners.size > 0) return;
+  if (retryTimer) {
+    clearTimeout(retryTimer);
+    retryTimer = null;
+  }
+  source?.close();
+  source = null;
+  setConnected(false);
+}
+
+/** Subscribe to the server's activity stream. */
 export function useActivityStream(handlers: Handlers) {
+  // Held in a ref so a parent re-render does not resubscribe and drop events.
   const ref = useRef(handlers);
   ref.current = handlers;
-  const [connected, setConnected] = useState(false);
+  const [isConnected, setIsConnected] = useState(connected);
 
   useEffect(() => {
-    const es = new EventSource('/api/stream');
+    const listener: Listener = { get handlers() { return ref.current; } };
+    listeners.add(listener);
+    statusListeners.add(setIsConnected);
+    connect();
+    setIsConnected(connected);
 
-    es.addEventListener('open', () => setConnected(true));
-    es.addEventListener('error', () => setConnected(false));
-
-    es.addEventListener('event', (ev) => {
-      try {
-        ref.current.onEvent?.(JSON.parse((ev as MessageEvent).data));
-      } catch {
-        /* a malformed frame should not kill the stream */
-      }
-    });
-    es.addEventListener('mission', (ev) => {
-      try {
-        ref.current.onMission?.(JSON.parse((ev as MessageEvent).data));
-      } catch {}
-    });
-    es.addEventListener('approval', (ev) => {
-      try {
-        ref.current.onApproval?.(JSON.parse((ev as MessageEvent).data));
-      } catch {}
-    });
-
-    return () => es.close();
+    return () => {
+      listeners.delete(listener);
+      statusListeners.delete(setIsConnected);
+      // Deferred: navigating between pages unmounts one subscriber and mounts
+      // another in the same tick, and tearing the socket down in between would
+      // reconnect on every route change.
+      setTimeout(release, 0);
+    };
   }, []);
 
-  return { connected };
+  return { connected: isConnected };
 }
 
 /** Poll a fetcher on an interval, pausing while the tab is hidden. */

@@ -1,3 +1,13 @@
+/**
+ * The chat API, relative to wherever this app is mounted.
+ *
+ * In production the app is served at /app/ and only /app/api/ reaches the chat
+ * backend - a bare /api/chat/stream falls through to the dashboard's API on a
+ * different port and comes back 404. Deriving it from the app's own base keeps
+ * dev and production on the same path.
+ */
+const API = `${import.meta.env.BASE_URL}api`;
+
 export interface Message {
   role: 'user' | 'assistant';
   content: string;
@@ -14,7 +24,7 @@ export async function streamChat(
   onChunk: (text: string) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const res = await fetch('/api/chat/stream', {
+  const res = await fetch(`${API}/chat/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messages }),
@@ -59,7 +69,7 @@ export async function streamChat(
 }
 
 export async function checkHealth(): Promise<{ ready: boolean; model: string }> {
-  const res = await fetch('/api/health');
+  const res = await fetch(`${API}/health`);
   if (!res.ok) throw new Error(`Health check failed (${res.status})`);
   return res.json() as Promise<{ ready: boolean; model: string }>;
 }

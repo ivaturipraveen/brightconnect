@@ -2,12 +2,18 @@
 
 export interface AppConfig {
   productName: string;
-  customerName: string;
   repo: string;
-  models: { orchestrator: string; agent: string };
+  models: { platform: string; choices: ModelChoice[] };
   maxMissionCostUsd: number;
   readiness: { anthropic: boolean; github: boolean };
   fleetSize: number;
+}
+
+export interface ModelChoice {
+  alias: string;
+  id: string;
+  label: string;
+  hint: string;
 }
 
 export type MissionStatus =
@@ -112,8 +118,6 @@ export interface FleetMember {
   department: 'sdlc' | 'sre' | 'platform';
   role: string;
   description: string;
-  /** Resolved model id this agent runs on. */
-  model: string;
   tools: string[];
   runs: number;
   succeeded: number;
@@ -158,7 +162,6 @@ export interface Overview {
     title: string;
     department: 'sdlc' | 'sre' | 'platform';
     role: string;
-    model: string;
     runs: number;
     status: 'working' | 'idle';
     missionId: string | null;
@@ -171,19 +174,35 @@ export interface Analytics {
     missions: number; succeeded: number; failed: number; active: number;
     awaitingApproval: number; artifacts: number; agentRuns: number;
     inputTokens: number; outputTokens: number; spendUsd: number;
+    cacheReadTokens: number; cacheWriteTokens: number; cacheHitRate: number;
     avgSpendUsd: number; avgDurationMs: number; successRate: number;
   };
-  models: { orchestrator: string; inUse: Array<{ model: string; agents: number }> };
+  models: { platform: string; inUse: Array<{ model: string; agents: number }> };
   byKind: Array<{ kind: string; missions: number; spendUsd: number; tokens: number }>;
   byTrigger: Array<{ trigger: string; missions: number }>;
   agents: Array<{
-    id: string; name: string; title: string; department: string; model: string;
+    id: string; name: string; title: string; department: string;
     runs: number; succeeded: number;
   }>;
   recent: Array<{
     id: string; title: string; kind: string; status: string;
     spendUsd: number; tokens: number; durationMs: number; createdAt: string;
   }>;
+}
+
+export interface OrchestratorPrompt {
+  id: string;
+  name: string;
+  title: string;
+  content: string;
+  placeholders: ReadonlyArray<{ token: string; describes: string }>;
+  expanded: string;
+}
+
+export interface ModelSettings {
+  model: string;
+  alias: string;
+  choices: ModelChoice[];
 }
 
 export interface RepoPull {
@@ -283,8 +302,20 @@ export const api = {
   },
 
   agentFile: (id: string) => req<AgentFile>(`/agents/${id}`),
-  setAgentModel: (id: string, model: 'haiku' | 'sonnet' | 'opus') =>
-    req<{ ok: boolean; id: string; model: string }>(`/agents/${id}/model`, {
+  orchestratorPrompt: () => req<OrchestratorPrompt>('/orchestrator'),
+  validateOrchestrator: (content: string) =>
+    req<{ ok: boolean; error?: string }>('/orchestrator/validate', {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    }),
+  saveOrchestratorPrompt: (content: string) =>
+    req<{ ok: boolean; id: string; name: string }>('/orchestrator', {
+      method: 'PUT',
+      body: JSON.stringify({ content }),
+    }),
+  modelSettings: () => req<ModelSettings>('/settings/model'),
+  setPlatformModel: (model: string) =>
+    req<{ ok: boolean; model: string; alias: string }>('/settings/model', {
       method: 'PATCH',
       body: JSON.stringify({ model }),
     }),

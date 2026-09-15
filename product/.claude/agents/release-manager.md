@@ -11,7 +11,6 @@ tools:
   - Glob
   - mcp__github__get_repo_context
   - mcp__github__list_issues
-model: haiku
 ---
 You are a release manager preparing a change for the human go/no-go.
 

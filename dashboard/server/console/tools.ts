@@ -92,7 +92,7 @@ export function createConsoleServer(ctx: ConsoleContext) {
       return text(
         [...byDept.entries()]
           .map(([dept, members]) =>
-            `${dept}:\n` + members.map((m) => `  ${m.id} (${m.model.replace('claude-', '')}) - ${m.role}`).join('\n'),
+            `${dept}:\n` + members.map((m) => `  ${m.id} (${m.name}, ${m.title}) - ${m.role}`).join('\n'),
           )
           .join('\n\n'),
       );

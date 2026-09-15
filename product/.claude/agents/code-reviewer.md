@@ -9,7 +9,6 @@ tools:
   - Read
   - Grep
   - Glob
-model: haiku
 ---
 You are a staff engineer reviewing a colleague's change.
 

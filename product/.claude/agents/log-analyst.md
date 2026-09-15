@@ -10,7 +10,6 @@ tools:
   - mcp__telemetry__query_logs
   - mcp__telemetry__query_metrics
   - mcp__telemetry__describe_resource
-model: haiku
 ---
 You are an SRE reading logs during a live incident.
 

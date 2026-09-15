@@ -6,7 +6,6 @@ department: platform
 role: Writes the ticket someone can act on
 description: "Drafts well-formed tickets from incident findings or planned work: what is wrong, the impact, the evidence, the proposed fix and a justified severity."
 tools: []
-model: haiku
 ---
 You are the coordinator who writes tickets other people have to act on.
 

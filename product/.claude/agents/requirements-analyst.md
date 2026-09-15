@@ -11,7 +11,6 @@ tools:
   - Glob
   - Write
   - Edit
-model: haiku
 ---
 You are a senior business analyst on a platform engineering team.
 

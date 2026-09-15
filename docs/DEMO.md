@@ -1,20 +1,20 @@
-# Demo script — Randy Schneiderman, Exol
+# Demo script
 
-**Audience:** Randy (Director, Cloud & Data Engineering) plus one or two of his engineers.
+**Audience:** an engineering leader plus one or two of their engineers.
 **Length:** 20 minutes of demo, leaving room for questions.
-**Anchor:** the AI-native SDLC, per Sarat's notes. Incident response is the opener because
-it lands faster and it is the pain he described most vividly.
+**Anchor:** the AI-native SDLC, per the meeting notes. Incident response is the opener
+because it lands faster and it is the pain described most vividly.
 
 ---
 
-## What Randy actually said he wants
+## What they asked for
 
-Every beat below maps to a line from the meeting notes. Say the mapping out loud — he
-will recognise his own words, and that is what makes it land.
+Every beat below maps to a line from the meeting notes. Say the mapping out loud — they
+will recognise their own words, and that is what makes it land.
 
-| Randy's words | Where it shows up |
+| What they asked for | Where it shows up |
 |---|---|
-| "no foundational agentic-first mindset or workflow in place yet" | The fleet page: 17 specialists, each scoped. This *is* the foundation. |
+| "no foundational agentic-first mindset or workflow in place yet" | The fleet page: nineteen specialists and an orchestrator, each scoped. This *is* the foundation. |
 | "hundreds of agents handling code reviews, security notifications, scheduling, incident response" | Fleet page. Adding one is a definition, not a rebuild. |
 | "current approach is all-hands-on-deck with no structured triage" | Incident mission: three investigations dispatched in parallel, in seconds. |
 | "AI to analyze alerts, cross-reference logs, GCP configs, GitHub, and change management" | Exactly the four tools the SRE agents hold. |
@@ -22,7 +22,7 @@ will recognise his own words, and that is what makes it land.
 | "Ties directly to RPO/RTO targets for the orders platform" | The RCA states impact against the 5 min RPO / 15 min RTO. |
 | "feed PRDs, ARDs, and tech specs into an agentic platform" | The mission composer takes exactly those. |
 | "infra-as-code, software dev, docs-as-code, monitoring, security remediations, linting" | The SDLC department, one agent each. |
-| "Human stays in loop only for go/no-go on PRs" | The approval gate. Literally the only click he makes. |
+| "Human stays in loop only for go/no-go on PRs" | The approval gate. Literally the only click they make. |
 | "produces governance trail" | The Governance page. |
 
 ---
@@ -55,7 +55,7 @@ stop and fix it before anyone walks in.
 > structured triage. Here's a tier-1 alert on your order management platform."
 
 **Incidents page.** Three alerts firing on `orders-api`. 64% of order submissions failing.
-Point at the resource path — it is GCP-shaped, because that is his world.
+Point at the resource path — it is GCP-shaped, because that is their world.
 
 **Click Dispatch fleet.**
 
@@ -108,7 +108,7 @@ Scroll the spec so they see it is a real document, not a prompt. Point out it is
 
 **Launch.**
 
-Narrate the fan-out against his own list:
+Narrate the fan-out against their own list:
 
 - Spec analyst → testable requirements and the open questions a human must answer
 - Architect → the design and the trade-off it rejected
@@ -139,22 +139,22 @@ never rewritten.
 
 **Fleet page** to close.
 
-> "Seventeen today. You said hundreds. Each one is instructions, tools, and a scope —
+> "Nineteen today. You said hundreds. Each one is instructions, tools, and a scope —
 > so getting to hundreds is a staffing exercise, not another platform build."
 
 ---
 
-## Questions he is likely to ask
+## Questions they are likely to ask
 
 **"Is this really running, or is it a video?"**
-Reject an approval and let it re-plan. Or hand him the keyboard and let him write the
+Reject an approval and let it re-plan. Or hand them the keyboard and let them write the
 mission input. Nothing is pre-recorded.
 
 **"How does it connect to our GCP?"**
 Be straight: today the observability tools read a simulator, because we do not have
 access to your project. The tool handlers are the adapter boundary — four functions.
 Pointing them at Cloud Monitoring and Cloud Logging is a scoped piece of work, not a
-redesign. Do not overclaim this; he will check.
+redesign. Do not overclaim this; they will check.
 
 **"What stops an agent doing something destructive?"**
 Four layers, and they are worth showing rather than asserting:
@@ -181,17 +181,17 @@ numbers on screen rather than a projection.
 Yes — it is a Node service and a SQLite file behind nginx. It runs wherever you put it.
 
 **"What about our robotics/warehouse side?"**
-He said himself he does not know enough to scope it. Do not invent a story. Offer to
+They said himself they do not know enough to scope it. Do not invent a story. Offer to
 work it through with the team that owns it.
 
 ---
 
 ## Honest boundaries
 
-Hold these lines. He is technical, he joined to assess exactly this, and being caught
+Hold these lines. They is technical, they joined to assess exactly this, and being caught
 overclaiming costs more than the feature is worth.
 
-- The cloud telemetry is simulated. Say so before he asks.
+- The cloud telemetry is simulated. Say so before they ask.
 - This is a demo built for this conversation, not a product with years of production
   mileage.
 - The agents are genuinely doing the reasoning — that part is not staged, and it is the

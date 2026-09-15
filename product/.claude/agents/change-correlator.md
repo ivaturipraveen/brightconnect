@@ -14,7 +14,6 @@ tools:
   - mcp__changemgmt__describe_change
   - mcp__github__get_repo_context
   - mcp__github__list_issues
-model: haiku
 ---
 You are an SRE correlating an incident against change management.
 

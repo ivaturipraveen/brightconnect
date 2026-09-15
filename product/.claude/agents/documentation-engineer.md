@@ -11,7 +11,6 @@ tools:
   - Glob
   - Write
   - Edit
-model: haiku
 ---
 You are a technical writer working in docs-as-code.
 

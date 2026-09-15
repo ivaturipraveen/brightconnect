@@ -16,8 +16,14 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { Octokit } from '@octokit/rest';
 import { config, hasAnthropicKey, hasGithubToken } from './config.ts';
+import {
+  hydratePlatformModel, modelAlias, MODEL_CHOICES, platformModel, setPlatformModel,
+} from './models.ts';
 import { loadFleet, readAgentFile, validateAgentFile, writeAgentFile } from './agents/fleet.ts';
-import { fleetSummary } from './orchestrator/prompts.ts';
+import {
+  fleetSummary, ORCHESTRATOR_PLACEHOLDERS, orchestratorSystemPrompt, readOrchestratorPrompt,
+  validateOrchestratorPrompt, writeOrchestratorPrompt,
+} from './orchestrator/prompts.ts';
 import {
   agentRuns, alerts, approvals, artifacts, events, inboundEvents, initDatabase, missions,
 } from './db/index.ts';
@@ -36,6 +42,9 @@ import { DOCUMENTS_DIR } from './console/documents.ts';
 
 // Open the database and create the schema before anything touches it.
 const driver = await initDatabase();
+// The model chosen from the dashboard outlives a restart; without this the
+// fleet quietly reverts to whatever the env file says.
+await hydratePlatformModel();
 await seedAlerts();
 const orphaned = await reconcileOrphanedMissions();
 const pruned = await pruneWorkspaces();
@@ -65,11 +74,10 @@ app.get('/api/health', async () => ({ ok: true, uptime: process.uptime() }));
 
 app.get('/api/config', async () => ({
   productName: config.productName,
-  customerName: config.customerName,
   repo: `${config.github.owner}/${config.github.repo}`,
   models: {
-    orchestrator: config.anthropic.orchestratorModel,
-    agent: config.anthropic.agentModel,
+    platform: platformModel(),
+    choices: MODEL_CHOICES,
   },
   maxMissionCostUsd: config.maxMissionCostUsd,
   /** Drives the setup banner in the UI. */
@@ -111,7 +119,7 @@ app.get('/api/overview', async () => {
       name: 'Ada',
       title: 'Orchestrator',
       role: 'Reads the request, decides what it is, and engages the specialists it needs',
-      model: config.anthropic.orchestratorModel,
+      model: platformModel(),
       status: active.length > 0 ? 'working' : 'idle',
       missionId: active[0]?.id ?? null,
     },
@@ -129,7 +137,6 @@ app.get('/api/overview', async () => {
       title: m.title,
       department: m.department,
       role: m.role,
-      model: m.model,
       runs: statsBy.get(m.id)?.runs ?? 0,
       status: runningByAgent.has(m.id) ? 'working' : 'idle',
       missionId: runningByAgent.get(m.id) ?? null,
@@ -161,6 +168,8 @@ app.get('/api/analytics', async () => {
   const succeeded = all.filter((m) => m.status === 'succeeded');
   const inTok = all.reduce((n, m) => n + m.inputTokens, 0);
   const outTok = all.reduce((n, m) => n + m.outputTokens, 0);
+  const cacheRead = all.reduce((n, m) => n + m.cacheReadTokens, 0);
+  const cacheWrite = all.reduce((n, m) => n + m.cacheWriteTokens, 0);
   const spend = all.reduce((n, m) => n + m.costUsd, 0);
 
   const byKind: Record<string, { missions: number; spendUsd: number; tokens: number }> = {};
@@ -174,11 +183,15 @@ app.get('/api/analytics', async () => {
   const byTrigger: Record<string, number> = {};
   for (const m of all) byTrigger[m.trigger] = (byTrigger[m.trigger] ?? 0) + 1;
 
-  // Which models are actually in use, and on how many agents.
+  // Which models are actually in use, and on how many agents. Agents that
+  // inherit are counted against the platform model, because that is the model
+  // they will actually run on.
   const fleet = loadFleet();
-  const byModel: Record<string, number> = {};
-  for (const m of fleet) byModel[m.model] = (byModel[m.model] ?? 0) + 1;
-  byModel[config.anthropic.orchestratorModel] = (byModel[config.anthropic.orchestratorModel] ?? 0) + 1;
+  const byModel: Record<string, number> = { [platformModel()]: 1 }; // the orchestrator
+  for (const m of fleet) {
+    const id = m.model === 'inherit' ? platformModel() : m.model;
+    byModel[id] = (byModel[id] ?? 0) + 1;
+  }
 
   const runsBy = new Map(runs.map((r) => [r.agentType, r]));
 
@@ -193,6 +206,16 @@ app.get('/api/analytics', async () => {
       agentRuns: runs.reduce((n, r) => n + r.runs, 0),
       inputTokens: inTok,
       outputTokens: outTok,
+      cacheReadTokens: cacheRead,
+      cacheWriteTokens: cacheWrite,
+      /**
+       * Share of prompt tokens served from cache. The denominator is every
+       * prompt token the platform sent, cached or not, so this reads as "how
+       * much of what we sent did we avoid paying full price for".
+       */
+      cacheHitRate: inTok + cacheRead + cacheWrite > 0
+        ? Math.round((cacheRead / (inTok + cacheRead + cacheWrite)) * 100)
+        : 0,
       spendUsd: Number(spend.toFixed(4)),
       avgSpendUsd: finished.length ? Number((spend / finished.length).toFixed(4)) : 0,
       avgDurationMs: finished.length
@@ -201,7 +224,7 @@ app.get('/api/analytics', async () => {
       successRate: finished.length ? Math.round((succeeded.length / finished.length) * 100) : 0,
     },
     models: {
-      orchestrator: config.anthropic.orchestratorModel,
+      platform: platformModel(),
       inUse: Object.entries(byModel).map(([model, agents]) => ({ model, agents })),
     },
     byKind: Object.entries(byKind).map(([kind, v]) => ({
@@ -213,7 +236,6 @@ app.get('/api/analytics', async () => {
       name: m.name,
       title: m.title,
       department: m.department,
-      model: m.model,
       runs: runsBy.get(m.id)?.runs ?? 0,
       succeeded: runsBy.get(m.id)?.succeeded ?? 0,
     })).sort((a, b) => b.runs - a.runs),
@@ -343,13 +365,49 @@ app.get('/api/fleet', async () => {
   }));
 });
 
+/**
+ * The orchestrator's own brief.
+ *
+ * Editable for the same reason the nineteen specialist prompts are: the agent
+ * that decides what all of them do was the one prompt you could not change
+ * without a deploy. The generated sections - the roster, the tool names, the
+ * project map - stay generated, and appear as placeholders in the text.
+ */
+app.get('/api/orchestrator', async () => ({
+  id: 'orchestrator',
+  name: 'Ada',
+  title: 'Orchestrator',
+  content: readOrchestratorPrompt(),
+  placeholders: ORCHESTRATOR_PLACEHOLDERS,
+  /** What the model actually receives once the placeholders are expanded. */
+  expanded: orchestratorSystemPrompt('<mission workspace>')[0],
+}));
+
+app.post('/api/orchestrator/validate', async (req, reply) => {
+  const parsed = z.object({ content: z.string() }).safeParse(req.body);
+  if (!parsed.success) return reply.code(400).send({ error: 'Invalid body' });
+  return validateOrchestratorPrompt(parsed.data.content);
+});
+
+app.put('/api/orchestrator', async (req, reply) => {
+  const parsed = z.object({ content: z.string().min(1) }).safeParse(req.body);
+  if (!parsed.success) return reply.code(400).send({ error: 'Invalid body' });
+  try {
+    writeOrchestratorPrompt(parsed.data.content);
+    return { ok: true, id: 'orchestrator', name: 'Ada' };
+  } catch (err) {
+    return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
 /** Raw agent definition file, for the prompt editor. */
 app.get('/api/agents/:id', async (req, reply) => {
   const { id } = req.params as { id: string };
   const member = loadFleet().find((m) => m.id === id);
   if (!member) return reply.code(404).send({ error: 'No such agent' });
   try {
-    return { id, content: readAgentFile(id), member: { name: member.name, model: member.model } };
+    const model = member.model === 'inherit' ? 'inherit' : modelAlias(member.model);
+    return { id, content: readAgentFile(id), member: { name: member.name, model } };
   } catch (err) {
     return reply.code(500).send({ error: err instanceof Error ? err.message : String(err) });
   }
@@ -366,32 +424,30 @@ app.post('/api/agents/:id/validate', async (req, reply) => {
 });
 
 /**
- * Change one agent's model without opening the whole file.
+ * The model the whole platform runs on.
  *
- * Model choice is the setting people actually want to change - a cheap agent
- * for retrieval, an expensive one for synthesis - and making that a text edit
- * in YAML is a good way to ensure nobody ever does it.
+ * One control, not nineteen: the orchestrator and every agent that has not
+ * asked for something different move together. Persisted, so it survives a
+ * restart, and read at the start of each mission - a running one keeps the
+ * model it started with.
  */
-app.patch('/api/agents/:id/model', async (req, reply) => {
-  const { id } = req.params as { id: string };
-  const parsed = z.object({ model: z.enum(['haiku', 'sonnet', 'opus']) }).safeParse(req.body);
-  if (!parsed.success) {
-    return reply.code(400).send({ error: 'model must be haiku, sonnet or opus' });
-  }
-  const member = loadFleet().find((m) => m.id === id);
-  if (!member) return reply.code(404).send({ error: 'No such agent' });
+app.get('/api/settings/model', async () => ({
+  model: platformModel(),
+  alias: modelAlias(platformModel()),
+  choices: MODEL_CHOICES,
+}));
 
+app.patch('/api/settings/model', async (req, reply) => {
+  const parsed = z.object({ model: z.string().min(1) }).safeParse(req.body);
+  if (!parsed.success) return reply.code(400).send({ error: 'model is required' });
   try {
-    const raw = readAgentFile(id);
-    const next = /^model:\s*.*$/m.test(raw)
-      ? raw.replace(/^model:\s*.*$/m, `model: ${parsed.data.model}`)
-      : raw.replace(/^---\s*$/m, `model: ${parsed.data.model}\n---`);
-    const saved = writeAgentFile(id, next);
-    return { ok: true, id, model: saved.model };
+    const model = await setPlatformModel(parsed.data.model);
+    return { ok: true, model, alias: modelAlias(model) };
   } catch (err) {
     return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
   }
 });
+
 
 app.put('/api/agents/:id', async (req, reply) => {
   const { id } = req.params as { id: string };
