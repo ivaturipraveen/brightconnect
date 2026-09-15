@@ -60,7 +60,7 @@ export default function App() {
     let currentMessages: Message[] = initialMessages;
 
     try {
-      const metadata = await streamChat(
+      await streamChat(
         next,
         (chunk) => {
           // Update the assistant message with streamed content
@@ -74,13 +74,6 @@ export default function App() {
         },
         controller.signal,
       );
-      // Add metadata to the assistant message
-      const copy: Message[] = [...currentMessages];
-      const last = copy[copy.length - 1];
-      if (last?.role === 'assistant') {
-        copy[copy.length - 1] = { ...last, metadata };
-        updateMessages(copy);
-      }
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
         setError(err instanceof Error ? err.message : String(err));
@@ -260,26 +253,6 @@ function Turn({ message, streaming }: { message: Message; streaming: boolean }) 
       >
         {message.content}
       </div>
-      {!streaming && message.metadata && (
-        <div className="mt-2 text-[13px] text-text-faint">
-          {message.metadata.inputTokens !== undefined && (
-            <span>{message.metadata.inputTokens} input tokens</span>
-          )}
-          {message.metadata.inputTokens !== undefined && message.metadata.outputTokens !== undefined && (
-            <span> • </span>
-          )}
-          {message.metadata.outputTokens !== undefined && (
-            <span>{message.metadata.outputTokens} output tokens</span>
-          )}
-          {(message.metadata.inputTokens !== undefined || message.metadata.outputTokens !== undefined) &&
-           message.metadata.elapsedTimeMs !== undefined && (
-            <span> • </span>
-          )}
-          {message.metadata.elapsedTimeMs !== undefined && (
-            <span>{message.metadata.elapsedTimeMs}ms</span>
-          )}
-        </div>
-      )}
     </div>
   );
 }

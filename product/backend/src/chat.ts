@@ -13,23 +13,6 @@ export interface ChatMessage {
   content: string;
 }
 
-/**
- * Metadata about a streamed chat response.
- *
- * All fields are required and always present on success. The streaming protocol
- * guarantees these will be sent once the message is complete.
- */
-export interface StreamMetadata {
-  inputTokens: number;
-  outputTokens: number;
-  elapsedTimeMs: number;
-}
-
-export interface StreamReplyResult {
-  chunks: AsyncGenerator<string>;
-  metadata: Promise<StreamMetadata>;
-}
-
 const SYSTEM_PROMPT = `You are a helpful assistant answering questions for users
 of this application.
 
@@ -70,43 +53,6 @@ export async function* streamReply(messages: ChatMessage[]): AsyncGenerator<stri
       yield event.delta.text;
     }
   }
-}
-
-/**
- * Stream a reply with metadata tracking. Returns both the text chunks and metadata
- * (token counts and elapsed time).
- */
-export async function streamReplyWithMetadata(messages: ChatMessage[]): Promise<StreamReplyResult> {
-  const startTime = Date.now();
-  const stream = anthropic().messages.stream({
-    model: config.model,
-    max_tokens: config.maxTokens,
-    system: SYSTEM_PROMPT,
-    messages: trimHistory(messages).map((m) => ({ role: m.role, content: m.content })),
-  });
-
-  async function* chunks(): AsyncGenerator<string> {
-    for await (const event of stream) {
-      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-        yield event.delta.text;
-      }
-    }
-  }
-
-  const metadata = (async (): Promise<StreamMetadata> => {
-    const finalMessage = await stream.finalMessage();
-    const elapsedTime = Date.now() - startTime;
-    return {
-      inputTokens: finalMessage.usage?.input_tokens ?? 0,
-      outputTokens: finalMessage.usage?.output_tokens ?? 0,
-      elapsedTimeMs: elapsedTime,
-    };
-  })();
-
-  return {
-    chunks: chunks(),
-    metadata,
-  };
 }
 
 /** Non-streaming reply, for callers that just want the whole answer. */
