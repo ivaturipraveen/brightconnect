@@ -16,7 +16,7 @@
     "dev:watch": "concurrently -n dash-api,dash-ui -c cyan,blue \"tsx watch --env-file-if-exists=.env dashboard/server/index.ts\" \"npm:dev:dashboard-web\"",
     "build": "vite build --config dashboard/vite.config.ts && npm run build --prefix product/frontend",
     "start": "tsx --env-file-if-exists=.env dashboard/server/index.ts",
-    "preflight": "tsx --env-file-if-exists=.env scripts/preflight.ts",
+    "preflight": "tsx --env-file-if-exists=.env ops/preflight.ts",
     "install:all": "npm install && npm install --prefix product/backend && npm install --prefix product/frontend",
     "typecheck": "tsc --noEmit -p dashboard/tsconfig.json && tsc --noEmit -p dashboard/tsconfig.web.json && npm run typecheck --prefix product/backend && npm run typecheck --prefix product/frontend",
     "test": "npm test --prefix product/backend",

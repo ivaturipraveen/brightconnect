@@ -11,10 +11,10 @@
  */
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { Octokit } from '@octokit/rest';
-import { config, hasAnthropicKey, hasGithubToken } from '../server/config.ts';
-import { changeMgmtServer, telemetryServer } from '../server/tools/telemetry.ts';
-import { createRunbookServer } from '../server/tools/runbook.ts';
-import { createGithubServer } from '../server/tools/github.ts';
+import { config, hasAnthropicKey, hasGithubToken } from '../dashboard/server/config.ts';
+import { changeMgmtServer, telemetryServer } from '../dashboard/server/tools/telemetry.ts';
+import { createRunbookServer } from '../dashboard/server/tools/runbook.ts';
+import { createGithubServer } from '../dashboard/server/tools/github.ts';
 
 const pass = (m: string) => console.log(`  \x1b[32m✓\x1b[0m ${m}`);
 const fail = (m: string) => console.log(`  \x1b[31m✗\x1b[0m ${m}`);

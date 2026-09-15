@@ -1,9 +1,19 @@
+# Dependencies and build output
 node_modules/
 dist/
+
+# Runtime state (the database lives in Postgres; this is the local fallback)
 data/*.db
 data/*.db-*
+workspaces/
+
+# Secrets
 .env
 .env.local
+
+# Claude Code's own scratch directory at the repository root.
+# NOT product/.claude/ - that holds the agent definitions and is tracked.
+/.claude/
+
 *.log
 .DS_Store
-workspaces/

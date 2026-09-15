@@ -131,43 +131,33 @@ at real Cloud Monitoring and Cloud Logging changes those four handlers and nothi
 ## Layout
 
 ```
-.claude/agents/          the 17 specialists - EDIT PROMPTS HERE
-  log-analyst.md         frontmatter (tools, model) + prompt body
-  rca-analyst.md
-  ...
-
-server/                  the API and the agent fleet
-  index.ts               REST + SSE
-  config.ts              all configuration, one place
-  db.ts                  SQLite schema and queries
-  bus.ts                 event fan-out to connected dashboards
-  agents/fleet.ts        loads and validates the agent files
-  orchestrator/
-    run.ts               mission runner, stream translation, approval gate
-    prompts.ts           orchestrator and mission briefs
-  tools/                 MCP servers: telemetry, changemgmt, runbook, github
-  sim/                   simulated environment and mutable incident state
-
-web/                     the console
-  index.html
-  src/
-    pages/               Mission Control · Mission Detail · Fleet · Incidents · Governance
-    components/
-      MissionFlow.tsx    live delegation flow
-      AgentEditor.tsx    prompt editor
-      ui.tsx             shared primitives
-    lib/                 typed API client, SSE hook
-
-scripts/preflight.ts     pre-demo check: key, subagents, tools, GitHub
-infra/                   EC2 deployment (systemd + nginx)
-docs/DEMO.md             the demo script
-data/                    SQLite database (gitignored)
-workspaces/              per-mission scratch space (gitignored)
-dist/                    built console (gitignored)
+product/              the application the fleet maintains
+    .claude/agents/   the 17 specialists - edit prompts here
+    backend/          chat API   - Fastify, streams replies from Claude
+    frontend/         chat UI    - React + Vite + Tailwind
+dashboard/            the platform that runs and watches the fleet
+    server/           API, orchestrator, agent tools, event intake
+    web/              the console
+ops/                  deployment and operations
+    deploy/           EC2 provisioning, systemd unit, nginx config
+    preflight.ts      pre-demo check: key, tools, subagents, GitHub
+docs/DEMO.md          the demo script
 ```
 
-One package, one `package.json`, one `npm install`. The server and the console
-share a dependency tree; `vite.config.ts` points at `web/` as its root.
+Generated, and never committed: `data/` (local SQLite fallback), `workspaces/`
+(a working copy of the product per mission), `dist/`, `node_modules/`.
+
+**Why `product/` and `dashboard/` are separate.** The fleet works on `product/`
+and cannot reach `dashboard/` - the platform is not editable by the agents it
+runs. The agent definitions live inside `product/.claude/` with the code they
+maintain, which makes `product/` a self-contained Claude Code project: the same
+seventeen agents load whether they are driven from the dashboard or from the
+Claude Code CLI in that directory.
+
+**Mission workspaces** are a working copy of `product/`, with dependencies
+symlinked rather than installed. A pull request carries only the files that
+differ from the product as it stands, so a request like "give the chat UI a dark
+theme" produces a reviewable diff rather than a dump of the codebase.
 
 ### Scripts
 

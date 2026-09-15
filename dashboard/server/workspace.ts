@@ -10,7 +10,7 @@
  * only code agents could find was the platform's own, and they edited that
  * instead.
  */
-import { cp, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, stat, symlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { config } from './config.ts';
@@ -113,6 +113,28 @@ export interface ProvisionResult {
   filesCopied: number;
 }
 
+/**
+ * Link each area's dependencies instead of installing them.
+ *
+ * An agent that needs to typecheck or run tests will otherwise run npm install,
+ * and one mission left a 314 MB node_modules behind. Linking the product's own
+ * dependencies means tooling works immediately, costs nothing on disk, and the
+ * link is skipped by the diff that builds the pull request.
+ */
+async function linkDependencies(workspaceDir: string): Promise<void> {
+  for (const area of PRODUCT_AREAS) {
+    const source = join(config.paths.productRoot, area.dir, 'node_modules');
+    if (!existsSync(source)) continue;
+    const target = join(workspaceDir, area.dir, 'node_modules');
+    if (existsSync(target)) continue;
+    try {
+      await symlink(source, target, 'dir');
+    } catch {
+      // Without the link an agent may install its own; that is slow, not broken.
+    }
+  }
+}
+
 /** Create a mission workspace containing the product code and its brief. */
 export async function provisionWorkspace(
   missionId: string,
@@ -135,6 +157,7 @@ export async function provisionWorkspace(
     'utf8',
   );
   await writeFile(join(workspaceDir, 'PROJECT.md'), projectMap(), 'utf8');
+  await linkDependencies(workspaceDir);
 
   return { workspaceDir, filesCopied };
 }
@@ -152,6 +175,8 @@ export async function changedFiles(
   async function walk(current: string) {
     for (const entry of await readdir(current, { withFileTypes: true })) {
       if (EXCLUDE.has(entry.name)) continue;
+      // Symlinks are the linked dependency trees; never follow them.
+      if (entry.isSymbolicLink()) continue;
       const full = join(current, entry.name);
       if (entry.isDirectory()) {
         await walk(full);
