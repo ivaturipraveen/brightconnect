@@ -25,6 +25,18 @@ export default function Incidents() {
     }
   };
 
+  /** Take one alert off the board; Reset environment restores the seeded set. */
+  const remove = async (alert: Alert) => {
+    if (!window.confirm(`Remove "${alert.title}" from the board? Reset environment brings it back.`)) return;
+    setBusy(alert.id);
+    try {
+      await api.deleteAlert(alert.id);
+      load();
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const reset = async () => {
     await api.resetSim();
     load();
@@ -72,6 +84,7 @@ export default function Incidents() {
                   </div>
                   <div className="mt-1 truncate font-mono text-[10px] text-ink-600">{a.resource}</div>
                 </div>
+                <div className="flex shrink-0 items-center gap-2">
                 <Button
                   variant="primary"
                   disabled={busy === a.id || a.status === 'resolved'}
@@ -79,6 +92,19 @@ export default function Incidents() {
                 >
                   {busy === a.id ? 'Dispatching…' : 'Dispatch fleet'}
                 </Button>
+                <button
+                  type="button"
+                  aria-label={`Remove ${a.title}`}
+                  title="Take this alert off the board. Reset environment brings it back."
+                  disabled={busy === a.id}
+                  onClick={() => void remove(a)}
+                  className="rounded p-1.5 text-ink-600 transition-colors hover:bg-crit-500/10 hover:text-crit-400 disabled:opacity-40"
+                >
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                    <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                </div>
               </li>
             ))}
           </ul>

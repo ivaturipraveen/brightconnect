@@ -266,6 +266,12 @@ export const api = {
     }>(`/missions/${id}`),
   createMission: (body: { kind: MissionKind; title: string; input: string }) =>
     req<Mission>('/missions', { method: 'POST', body: JSON.stringify(body) }),
+  deleteMission: (id: string) =>
+    req<{ ok: boolean; id: string }>(`/missions/${id}`, { method: 'DELETE' }),
+  deleteAllMissions: () =>
+    req<{ ok: boolean; deleted: number }>('/missions', { method: 'DELETE' }),
+  deleteAlert: (id: string) =>
+    req<{ ok: boolean; id: string }>(`/alerts/${id}`, { method: 'DELETE' }),
   cancelMission: (id: string) =>
     req<{ cancelled: boolean }>(`/missions/${id}/cancel`, { method: 'POST' }),
 

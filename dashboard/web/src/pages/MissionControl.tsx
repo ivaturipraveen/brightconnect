@@ -58,6 +58,19 @@ export default function MissionControl() {
 
   useActivityStream({ onMission: load, onEvent: (e) => { if (e.type === 'mission.created') load(); } });
 
+  /** Empty the board. Live missions are cancelled on the way out. */
+  const clearAll = async () => {
+    const live = missions.filter((m) =>
+      ['queued', 'running', 'awaiting_approval'].includes(m.status),
+    ).length;
+    const warning = live
+      ? `Delete all ${missions.length} missions? ${live} ${live === 1 ? 'is' : 'are'} still live and will be cancelled. This cannot be undone.`
+      : `Delete all ${missions.length} missions and their trails? This cannot be undone.`;
+    if (!window.confirm(warning)) return;
+    await api.deleteAllMissions().catch(() => {});
+    load();
+  };
+
   const active = missions.filter((m) =>
     ['running', 'queued', 'awaiting_approval'].includes(m.status),
   );
@@ -109,18 +122,29 @@ export default function MissionControl() {
         }
         dense
         actions={
-          <span className="text-[11px] text-ink-500">
-            {tab === 'audit'
-              ? 'every gated decision and outcome, appended not rewritten'
-              : tab === 'artifacts'
-                ? 'what the fleet produced'
-                : ''}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] text-ink-500">
+              {tab === 'audit'
+                ? 'every gated decision and outcome, appended not rewritten'
+                : tab === 'artifacts'
+                  ? 'what the fleet produced'
+                  : ''}
+            </span>
+            {tab === 'missions' && missions.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void clearAll()}
+                className="rounded px-2 py-0.5 text-[11px] text-ink-500 transition-colors hover:bg-crit-500/10 hover:text-crit-400"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
         }
       >
         {tab === 'missions' && (
           <>
-            {active.length > 0 && <MissionTable missions={active} />}
+            {active.length > 0 && <MissionTable missions={active} onDeleted={load} />}
             {done.length > 0 && (
               <>
                 {active.length > 0 && (
@@ -128,7 +152,7 @@ export default function MissionControl() {
                     Finished
                   </div>
                 )}
-                <MissionTable missions={done} />
+                <MissionTable missions={done} onDeleted={load} />
               </>
             )}
             {missions.length === 0 && (
@@ -287,7 +311,24 @@ function Intake({ events, onChanged }: { events: InboundEvent[]; onChanged: () =
   );
 }
 
-function MissionTable({ missions }: { missions: Mission[] }) {
+function MissionTable({ missions, onDeleted }: { missions: Mission[]; onDeleted: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const remove = async (m: Mission) => {
+    const live = ['queued', 'running', 'awaiting_approval'].includes(m.status);
+    const warning = live
+      ? `"${m.title}" is still live. Deleting it cancels the run and removes its trail. Continue?`
+      : `Delete "${m.title}" and its full trail? This cannot be undone.`;
+    if (!window.confirm(warning)) return;
+    setBusy(m.id);
+    try {
+      await api.deleteMission(m.id);
+      onDeleted();
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[820px] text-[13px]">
@@ -300,6 +341,7 @@ function MissionTable({ missions }: { missions: Mission[] }) {
             <th className="px-3 py-2 text-right font-medium">Duration</th>
             <th className="px-3 py-2 text-right font-medium">Cost</th>
             <th className="px-4 py-2 text-right font-medium">Started</th>
+            <th className="w-10 px-2 py-2" />
           </tr>
         </thead>
         <tbody>
@@ -338,6 +380,18 @@ function MissionTable({ missions }: { missions: Mission[] }) {
                 <div className="text-[10px] text-ink-500">
                   {TRIGGER_LABEL[m.trigger] ?? m.trigger}
                 </div>
+              </td>
+              <td className="px-2 py-2.5 text-right">
+                <button
+                  type="button"
+                  aria-label={`Delete ${m.title}`}
+                  title="Delete this mission and its trail"
+                  disabled={busy === m.id}
+                  onClick={() => void remove(m)}
+                  className="rounded p-1 text-ink-600 transition-colors hover:bg-crit-500/10 hover:text-crit-400 disabled:opacity-40"
+                >
+                  <TrashIcon />
+                </button>
               </td>
             </tr>
           ))}
@@ -440,5 +494,14 @@ function Composer({
         </div>
       </div>
     </Panel>
+  );
+}
+
+/** Trash glyph. Inline so the page carries no icon dependency. */
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }

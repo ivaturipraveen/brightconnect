@@ -123,6 +123,26 @@ export const missions = {
     await driver.run(`UPDATE missions SET session_id = ? WHERE id = ?`, [sessionId, id]);
   },
 
+  /**
+   * Delete one mission and everything that hangs off it.
+   *
+   * Children first, so a failure part-way through cannot leave agent runs and
+   * events pointing at a mission that no longer exists. The inbound event that
+   * triggered it is kept but unlinked: it is the dedup record, and dropping it
+   * would let the poller re-dispatch the ticket it already handled.
+   */
+  async remove(id: string): Promise<void> {
+    await driver.run(`DELETE FROM approvals WHERE mission_id = ?`, [id]);
+    await driver.run(`DELETE FROM artifacts WHERE mission_id = ?`, [id]);
+    await driver.run(`DELETE FROM agent_runs WHERE mission_id = ?`, [id]);
+    await driver.run(`DELETE FROM events WHERE mission_id = ?`, [id]);
+    await driver.run(
+      `UPDATE inbound_events SET mission_id = NULL, status = 'ignored', note = ? WHERE mission_id = ?`,
+      ['Mission deleted from the dashboard', id],
+    );
+    await driver.run(`DELETE FROM missions WHERE id = ?`, [id]);
+  },
+
   /** Is there already a live mission answering this external reference? */
   async activeForSource(sourceRef: string): Promise<Mission | undefined> {
     const rows = await driver.query(
@@ -416,6 +436,11 @@ export const alerts = {
   async list(): Promise<Alert[]> {
     const rows = await driver.query(`SELECT * FROM alerts ORDER BY fired_at DESC`);
     return rows.map(alertFromRow);
+  },
+
+  /** Remove one alert. `resetIncident` puts the seeded set back. */
+  async remove(id: string): Promise<void> {
+    await driver.run(`DELETE FROM alerts WHERE id = ?`, [id]);
   },
 
   async setStatus(id: string, status: Alert['status']) {

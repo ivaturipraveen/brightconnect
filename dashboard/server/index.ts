@@ -513,6 +513,40 @@ app.post('/api/missions/:id/cancel', async (req, reply) => {
   return { cancelled };
 });
 
+/**
+ * Delete a mission and its trail.
+ *
+ * A live mission is cancelled first: deleting the record out from under a
+ * running agent leaves it writing events to a mission that is no longer there.
+ */
+app.delete('/api/missions/:id', async (req, reply) => {
+  const { id } = req.params as { id: string };
+  const mission = await missions.get(id);
+  if (!mission) return reply.code(404).send({ error: 'Mission not found' });
+
+  if (isRunning(id)) {
+    cancelMission(id);
+    // Give the run a moment to unwind before its rows go.
+    await new Promise((r) => setTimeout(r, 750));
+  }
+
+  await missions.remove(id);
+  bus.publish({ channel: 'mission', payload: { missionId: id, status: 'deleted' } });
+  return { ok: true, id };
+});
+
+/** Clear the board in one go, from the dashboard rather than the command line. */
+app.delete('/api/missions', async () => {
+  const all = await missions.list(500);
+  for (const m of all) {
+    if (isRunning(m.id)) cancelMission(m.id);
+  }
+  if (all.some((m) => isRunning(m.id))) await new Promise((r) => setTimeout(r, 750));
+  for (const m of all) await missions.remove(m.id);
+  bus.publish({ channel: 'mission', payload: { missionId: 'all', status: 'deleted' } });
+  return { ok: true, deleted: all.length };
+});
+
 /* ------------------------------------------------------------- approvals */
 
 app.get('/api/approvals', async () => approvals.listPending());
@@ -705,10 +739,21 @@ app.post('/api/alerts/:id/trigger', async (req, reply) => {
 });
 
 /** Reset the simulated incident so the demo can be run again cleanly. */
+/** Take one alert off the board. Reset environment puts the seeded set back. */
+app.delete('/api/alerts/:id', async (req, reply) => {
+  const { id } = req.params as { id: string };
+  if (!(await alerts.get(id))) return reply.code(404).send({ error: 'Alert not found' });
+  await alerts.remove(id);
+  bus.publish({ channel: 'alert', payload: { removed: id } });
+  return { ok: true, id };
+});
+
 app.post('/api/sim/reset', async () => {
-  resetIncident();
+  // Both were unawaited: the reply went out before the alerts were rewritten,
+  // and `alerts` serialised as an empty object because it was still a promise.
+  await resetIncident();
   bus.publish({ channel: 'alert', payload: { reset: true } });
-  return { ok: true, alerts: alerts.list() };
+  return { ok: true, alerts: await alerts.list() };
 });
 
 /* -------------------------------------------------------------- artifacts */
