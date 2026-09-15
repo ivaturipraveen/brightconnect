@@ -13,19 +13,19 @@ import Markdown from '../components/Markdown.tsx';
 import SplitPane from '../components/SplitPane.tsx';
 
 const EVENT_STYLE: Record<string, { tone: Tone; label: string }> = {
-  'mission.created': { tone: 'neutral', label: 'mission' },
-  'mission.started': { tone: 'info', label: 'mission' },
-  'mission.finished': { tone: 'ok', label: 'mission' },
-  'agent.spawned': { tone: 'think', label: 'delegate' },
-  'agent.finished': { tone: 'ok', label: 'report' },
-  'agent.message': { tone: 'neutral', label: 'agent' },
-  'agent.thinking': { tone: 'think', label: 'reasoning' },
-  'tool.called': { tone: 'info', label: 'tool' },
-  'tool.result': { tone: 'neutral', label: 'result' },
-  'approval.requested': { tone: 'warn', label: 'gate' },
-  'approval.decided': { tone: 'warn', label: 'decision' },
-  'artifact.created': { tone: 'ok', label: 'artifact' },
-  error: { tone: 'crit', label: 'error' },
+  'mission.created': { tone: 'neutral', label: 'Mission' },
+  'mission.started': { tone: 'info', label: 'Mission' },
+  'mission.finished': { tone: 'ok', label: 'Mission' },
+  'agent.spawned': { tone: 'think', label: 'Delegate' },
+  'agent.finished': { tone: 'ok', label: 'Report' },
+  'agent.message': { tone: 'neutral', label: 'Agent' },
+  'agent.thinking': { tone: 'think', label: 'Reasoning' },
+  'tool.called': { tone: 'info', label: 'Tool' },
+  'tool.result': { tone: 'neutral', label: 'Result' },
+  'approval.requested': { tone: 'warn', label: 'Gate' },
+  'approval.decided': { tone: 'warn', label: 'Decision' },
+  'artifact.created': { tone: 'ok', label: 'Artifact' },
+  error: { tone: 'crit', label: 'Error' },
 };
 
 export default function MissionDetail() {
