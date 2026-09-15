@@ -101,6 +101,9 @@ export default function SplitPane({
       style={{ ['--pane-width' as string]: `${width}px` }}
       className={`flex min-h-0 min-w-0 flex-col lg:flex-row ${className}`}
     >
+      {/* Slot contents must carry their own `flex-1`: a grid stretched its
+          children for free, a flex column does not, and a panel at its natural
+          height leaves dead space under the composer. */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">{left}</div>
 
       {/* A wide hit area around a thin visible line: a 1px target is a target

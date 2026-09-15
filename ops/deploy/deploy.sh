@@ -17,6 +17,25 @@ RSH="ssh -o StrictHostKeyChecking=no"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 APP_DIR=/opt/brightconnect
 
+# A deploy restarts the dashboard, and a restart kills whatever the fleet is
+# doing. Three ticket-to-PR runs were lost this way before anyone noticed - the
+# mission just ends with "interrupted by a server restart", minutes of work and
+# real money gone. Refuse by default; DEPLOY_FORCE=1 when you mean it.
+echo "==> Checking for live missions"
+LIVE="$(curl -fsS --max-time 10 "http://${TARGET#*@}/api/missions" 2>/dev/null \
+  | tr ',' '\n' | grep -c '"status":"\(running\|queued\|awaiting_approval\)"' || true)"
+if [[ "${LIVE:-0}" -gt 0 ]]; then
+  if [[ "${DEPLOY_FORCE:-0}" == "1" ]]; then
+    echo "    $LIVE mission(s) live - continuing because DEPLOY_FORCE=1"
+  else
+    echo "    REFUSING: $LIVE mission(s) are live and a deploy would kill them."
+    echo "    Wait for them to finish, or re-run with DEPLOY_FORCE=1 to override."
+    exit 1
+  fi
+else
+  echo "    none running"
+fi
+
 echo "==> Building both consoles"
 ( cd "$ROOT" && npm run build )
 

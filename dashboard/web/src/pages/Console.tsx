@@ -208,6 +208,7 @@ export default function Console() {
 
       <SplitPane id="console" className="min-h-0 flex-1" initial={320} min={260} max={620} left={
       <Panel
+        className="min-h-0 flex-1"
         title={
           <div className="flex items-center gap-1">
             {(['console', 'preview'] as const).map((v) => (

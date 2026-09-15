@@ -147,6 +147,7 @@ export default function MissionDetail() {
         max={700}
         left={
         <Panel
+          className="min-h-0 flex-1"
           title={
             <div className="flex items-center gap-1">
               {(['flow', 'graph', 'activity'] as const).map((v) => (
@@ -205,7 +206,7 @@ export default function MissionDetail() {
         </Panel>
         }
         right={
-        <div className="flex min-h-0 flex-col gap-4 overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
           <Panel title={`Fleet (${agents.length})`} dense>
             {agents.length === 0 ? (
               <div className="p-4"><Empty>No specialists engaged yet.</Empty></div>
