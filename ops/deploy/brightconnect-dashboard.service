@@ -1,0 +1,32 @@
+[Unit]
+Description=Bright Connect dashboard (console, orchestrator, agent fleet)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=brightconnect
+Group=brightconnect
+WorkingDirectory=/opt/brightconnect
+EnvironmentFile=/opt/brightconnect/.env
+ExecStart=/usr/bin/npx tsx dashboard/server/index.ts
+
+# Keep it up: restart on any exit, backing off so a crash loop cannot spin the
+# CPU during a demo.
+Restart=always
+RestartSec=3
+StartLimitIntervalSec=0
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=brightconnect-dashboard
+
+# The fleet writes into workspaces/ and data/ and nowhere else.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/brightconnect/data /opt/brightconnect/workspaces
+
+[Install]
+WantedBy=multi-user.target

@@ -15,7 +15,7 @@ export const config = {
   nodeEnv: env('NODE_ENV', 'development'),
 
   /** Display name shown throughout the UI. One line to rebrand. */
-  productName: env('PRODUCT_NAME', 'Brightworks'),
+  productName: env('PRODUCT_NAME', 'Bright Connect'),
   customerName: env('CUSTOMER_NAME', 'Northwind'),
 
   database: {
@@ -50,7 +50,7 @@ export const config = {
      * default: pointed at a real repository, acting on every new issue would
      * start a mission for each one. Set it empty to act on everything.
      */
-    triggerLabel: env('GITHUB_TRIGGER_LABEL', 'brightworks'),
+    triggerLabel: env('GITHUB_TRIGGER_LABEL', 'brightconnect'),
     /** Seconds between polls. 0 disables polling. */
     pollSeconds: Number(env('GITHUB_POLL_SECONDS', '45')),
   },

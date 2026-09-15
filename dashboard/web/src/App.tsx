@@ -46,7 +46,7 @@ export default function App() {
             <Logo />
             <div className="leading-tight">
               <div className="text-[15px] font-semibold text-ink-100">
-                {config?.productName ?? 'Brightworks'}
+                {config?.productName ?? 'Bright Connect'}
               </div>
               <div className="text-[11px] text-ink-400">
                 AI engineering workforce

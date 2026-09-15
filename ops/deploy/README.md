@@ -1,4 +1,4 @@
-# Deploying Brightworks
+# Deploying Bright Connect
 
 Two steps: provision the box once, then deploy as often as you like.
 
@@ -11,14 +11,14 @@ scp -i key.pem -r infra ubuntu@<host>:/tmp/
 ssh -i key.pem ubuntu@<host> 'sudo bash /tmp/infra/provision.sh'
 ```
 
-Installs Node 24, nginx, a `brightworks` service user, the systemd unit, and the
+Installs Node 24, nginx, a `brightconnect` service user, the systemd unit, and the
 reverse proxy.
 
 ## 2. Configure secrets (once, on the server)
 
 ```bash
 ssh -i key.pem ubuntu@<host>
-sudo tee /opt/brightworks/.env >/dev/null <<'ENV'
+sudo tee /opt/brightconnect/.env >/dev/null <<'ENV'
 ANTHROPIC_API_KEY=sk-ant-...
 GITHUB_TOKEN=github_pat_...
 GITHUB_OWNER=ivaturipraveen
@@ -26,8 +26,8 @@ GITHUB_REPO=brightconnect
 NODE_ENV=production
 PORT=8787
 ENV
-sudo chown brightworks:brightworks /opt/brightworks/.env
-sudo chmod 600 /opt/brightworks/.env
+sudo chown brightconnect:brightconnect /opt/brightconnect/.env
+sudo chmod 600 /opt/brightconnect/.env
 ```
 
 The `.env` never leaves the server — `deploy.sh` explicitly excludes it, so a deploy
@@ -45,9 +45,9 @@ verifies the health endpoint.
 ## Operating
 
 ```bash
-sudo systemctl status brightworks-api      # is it up
-sudo journalctl -u brightworks-api -f      # live logs
-sudo systemctl restart brightworks-api     # restart
+sudo systemctl status brightconnect-api      # is it up
+sudo journalctl -u brightconnect-api -f      # live logs
+sudo systemctl restart brightconnect-api     # restart
 ```
 
 `Restart=always` means the service comes back on crash and after reboot.
@@ -58,7 +58,7 @@ Once DNS points at the box:
 
 ```bash
 sudo apt-get install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d brightworks.yourdomain.com
+sudo certbot --nginx -d brightconnect.yourdomain.com
 ```
 
 Certbot rewrites the nginx config and sets up renewal. The SSE block's
@@ -68,7 +68,7 @@ Certbot rewrites the nginx config and sets up renewal. The SSE block's
 
 - **SSE through nginx** needs `proxy_buffering off` and a long `proxy_read_timeout`.
   Both are set in `nginx.conf`; keep them if you change it.
-- **Data lives in** `/opt/brightworks/data` (SQLite) and `/opt/brightworks/workspaces`
+- **Data lives in** `/opt/brightconnect/data` (SQLite) and `/opt/brightconnect/workspaces`
   (agent scratch space). Both are excluded from deploys, so they survive.
 - **Sizing**: t3.medium works for a single mission. Use t3.large if you plan to run
   concurrent missions in front of an audience.

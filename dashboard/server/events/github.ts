@@ -92,7 +92,7 @@ export function normalizeWebhook(
     const pr = payload.pull_request;
     if (!pr) return { skip: 'no pull request' };
     // Never review our own work - that is not a review, it is a loop.
-    if ((pr.body ?? '').includes(config.productName) || pr.head?.ref?.startsWith('brightworks/')) {
+    if ((pr.body ?? '').includes(config.productName) || pr.head?.ref?.startsWith('brightconnect/')) {
       return { skip: 'opened by the platform itself' };
     }
     return {
@@ -152,7 +152,7 @@ export async function pollGitHub(): Promise<NormalizedEvent[]> {
 
     const prs = await gh.pulls.list({ ...repoRef, state: 'open', per_page: 10, sort: 'created', direction: 'desc' });
     for (const pr of prs.data) {
-      if ((pr.body ?? '').includes(config.productName) || pr.head?.ref?.startsWith('brightworks/')) continue;
+      if ((pr.body ?? '').includes(config.productName) || pr.head?.ref?.startsWith('brightconnect/')) continue;
       out.push({
         id: `poll-pr-${pr.number}`,
         kind: 'pull_request.polled',

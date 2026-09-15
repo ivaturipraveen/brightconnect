@@ -24,7 +24,7 @@ const info = (m: string) => console.log(`  \x1b[90m·\x1b[0m ${m}`);
 
 let failures = 0;
 
-console.log('\nBrightworks preflight\n');
+console.log('\nBright Connect preflight\n');
 
 /* ------------------------------------------------------------ 1. API key */
 

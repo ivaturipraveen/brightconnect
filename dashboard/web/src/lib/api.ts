@@ -1,4 +1,4 @@
-/** Typed client for the Brightworks API. */
+/** Typed client for the Bright Connect API. */
 
 export interface AppConfig {
   productName: string;
