@@ -16,7 +16,7 @@ export const config = {
 
   /** Display name shown throughout the UI. One line to rebrand. */
   productName: env('PRODUCT_NAME', 'Bright Connect'),
-  customerName: env('CUSTOMER_NAME', 'Northwind'),
+  customerName: env('CUSTOMER_NAME', ''),
 
   database: {
     /**

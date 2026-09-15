@@ -9,7 +9,7 @@
  *
  * The scenario contains a genuine causal chain that the agents have to *find*:
  * a connection-pool change shipped four minutes before the first error, which
- * starved the OMS API of database connections under normal load.
+ * starved the Orders API of database connections under normal load.
  */
 
 export interface LogEntry {
@@ -69,12 +69,12 @@ export const INCIDENT_WINDOW = {
 
 export const RESOURCES: ResourceDescriptor[] = [
   {
-    name: 'projects/oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-api',
+    name: 'projects/orders-prod/locations/us-central1/clusters/orders-prod/workloads/orders-api',
     type: 'k8s_deployment',
     state: 'DEGRADED',
     config: {
       replicas: { desired: 6, ready: 2, unavailable: 4 },
-      image: 'gcr.io/oms-prod/oms-api:2.14.3',
+      image: 'gcr.io/orders-prod/orders-api:2.14.3',
       resources: { requests: { cpu: '500m', memory: '1Gi' }, limits: { cpu: '2', memory: '2Gi' } },
       readinessProbe: { path: '/healthz', periodSeconds: 10, failureThreshold: 3, timeoutSeconds: 1 },
       env: {
@@ -87,7 +87,7 @@ export const RESOURCES: ResourceDescriptor[] = [
     },
   },
   {
-    name: 'projects/oms-prod/instances/oms-primary',
+    name: 'projects/orders-prod/instances/orders-db',
     type: 'cloudsql_instance',
     state: 'RUNNABLE',
     config: {
@@ -96,23 +96,23 @@ export const RESOURCES: ResourceDescriptor[] = [
       maxConnections: 800,
       currentConnections: 61,
       replicationType: 'SYNCHRONOUS',
-      failoverReplica: 'oms-primary-failover (us-east1, healthy)',
+      failoverReplica: 'orders-db-failover (us-east1, healthy)',
       pointInTimeRecovery: true,
       backupRetentionDays: 7,
     },
   },
   {
-    name: 'projects/oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-fulfilment',
+    name: 'projects/orders-prod/locations/us-central1/clusters/orders-prod/workloads/orders-fulfilment',
     type: 'k8s_deployment',
     state: 'HEALTHY',
     config: {
       replicas: { desired: 4, ready: 4, unavailable: 0 },
-      image: 'gcr.io/oms-prod/oms-fulfilment:1.9.0',
+      image: 'gcr.io/orders-prod/orders-fulfilment:1.9.0',
       env: { DB_MAX_POOL_SIZE: '40' },
     },
   },
   {
-    name: 'projects/oms-prod/global/backendServices/oms-api-lb',
+    name: 'projects/orders-prod/global/backendServices/orders-api-lb',
     type: 'load_balancer',
     state: 'DEGRADED',
     config: {
@@ -128,7 +128,7 @@ export const RESOURCES: ResourceDescriptor[] = [
 
 function buildLogs(): LogEntry[] {
   const logs: LogEntry[] = [];
-  const api = 'projects/oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-api';
+  const api = 'projects/orders-prod/locations/us-central1/clusters/orders-prod/workloads/orders-api';
 
   // Quiet baseline before anything goes wrong.
   for (let m = -30; m < -4; m += 4) {
@@ -136,7 +136,7 @@ function buildLogs(): LogEntry[] {
       timestamp: at(m),
       severity: 'INFO',
       resource: api,
-      service: 'oms-api',
+      service: 'orders-api',
       message: `Handled 1,4${Math.abs(m)} requests in last window; p99=118ms; pool_in_use=12/50`,
     });
   }
@@ -146,15 +146,15 @@ function buildLogs(): LogEntry[] {
     timestamp: at(-4),
     severity: 'INFO',
     resource: api,
-    service: 'oms-api',
-    message: 'Rolling update started: oms-api:2.14.2 -> oms-api:2.14.3',
+    service: 'orders-api',
+    message: 'Rolling update started: orders-api:2.14.2 -> orders-api:2.14.3',
     labels: { deployment_id: 'dep-8817', triggered_by: 'cloudbuild' },
   });
   logs.push({
     timestamp: at(-3),
     severity: 'INFO',
     resource: api,
-    service: 'oms-api',
+    service: 'orders-api',
     message: 'Config loaded: DB_MAX_POOL_SIZE=5 DB_CONNECTION_TIMEOUT_MS=2000',
     labels: { deployment_id: 'dep-8817' },
   });
@@ -162,8 +162,8 @@ function buildLogs(): LogEntry[] {
     timestamp: at(-2),
     severity: 'INFO',
     resource: api,
-    service: 'oms-api',
-    message: 'Rolling update complete: 6/6 pods running oms-api:2.14.3',
+    service: 'orders-api',
+    message: 'Rolling update complete: 6/6 pods running orders-api:2.14.3',
     labels: { deployment_id: 'dep-8817' },
   });
 
@@ -172,7 +172,7 @@ function buildLogs(): LogEntry[] {
     timestamp: at(-1),
     severity: 'WARNING',
     resource: api,
-    service: 'oms-api',
+    service: 'orders-api',
     message: 'Connection pool saturated: pool_in_use=5/5 waiters=3 avg_wait=340ms',
   });
 
@@ -181,7 +181,7 @@ function buildLogs(): LogEntry[] {
     timestamp: at(0),
     severity: 'ERROR',
     resource: api,
-    service: 'oms-api',
+    service: 'orders-api',
     message:
       'HikariPool-1 - Connection is not available, request timed out after 2000ms (pool size 5, active 5, waiting 18)',
     labels: { trace: 'a3f9c21e', endpoint: 'POST /v1/orders' },
@@ -191,9 +191,9 @@ function buildLogs(): LogEntry[] {
   const cascade: Array<[number, LogEntry['severity'], string]> = [
     [0.5, 'ERROR', 'POST /v1/orders failed: 503 Service Unavailable (db_connection_timeout) in 2041ms'],
     [1, 'ERROR', 'Readiness probe failed: GET /healthz timed out after 1000ms'],
-    [1.5, 'WARNING', 'Pod oms-api-7d9f4b-x2k9 removed from service endpoints (readiness failing)'],
+    [1.5, 'WARNING', 'Pod orders-api-7d9f4b-x2k9 removed from service endpoints (readiness failing)'],
     [2, 'ERROR', 'HikariPool-1 - Connection is not available, request timed out after 2000ms (pool size 5, active 5, waiting 47)'],
-    [3, 'ERROR', 'Readiness probe failed 3/3: restarting container oms-api'],
+    [3, 'ERROR', 'Readiness probe failed 3/3: restarting container orders-api'],
     [4, 'CRITICAL', 'Only 2/6 replicas ready; upstream 5xx rate 64%'],
     [6, 'ERROR', 'POST /v1/orders failed: 503 Service Unavailable (db_connection_timeout) in 2003ms'],
     [8, 'CRITICAL', 'Order submission error budget for the hour exhausted (SLO 99.9%, observed 93.1%)'],
@@ -201,7 +201,7 @@ function buildLogs(): LogEntry[] {
     [15, 'CRITICAL', 'Sustained degradation: 2/6 replicas ready for 11 minutes'],
   ];
   for (const [m, severity, message] of cascade) {
-    logs.push({ timestamp: at(m), severity, resource: api, service: 'oms-api', message });
+    logs.push({ timestamp: at(m), severity, resource: api, service: 'orders-api', message });
   }
 
   // Fulfilment stays healthy - it did not receive the pool change. This is the
@@ -211,8 +211,8 @@ function buildLogs(): LogEntry[] {
       timestamp: at(m),
       severity: 'INFO',
       resource:
-        'projects/oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-fulfilment',
-      service: 'oms-fulfilment',
+        'projects/orders-prod/locations/us-central1/clusters/orders-prod/workloads/orders-fulfilment',
+      service: 'orders-fulfilment',
       message: `Processed fulfilment batch; p99=96ms; pool_in_use=14/40; no errors`,
     });
   }
@@ -222,7 +222,7 @@ function buildLogs(): LogEntry[] {
     logs.push({
       timestamp: at(m),
       severity: 'INFO',
-      resource: 'projects/oms-prod/instances/oms-primary',
+      resource: 'projects/orders-prod/instances/orders-db',
       service: 'cloudsql',
       message: `Instance healthy; connections=61/800; cpu=22%; replication_lag=0.4s`,
     });
@@ -243,7 +243,7 @@ function series(metric: string, resource: string, unit: string, fn: (m: number) 
   return { metric, resource, unit, points };
 }
 
-const API = 'oms-api';
+const API = 'orders-api';
 
 export const METRICS: MetricSeries[] = [
   series('request_latency_p99', API, 'ms', (m) => (m < -1 ? 115 + Math.sin(m) * 8 : Math.min(2100, 140 + (m + 1) * 260))),
@@ -251,8 +251,8 @@ export const METRICS: MetricSeries[] = [
   series('replicas_ready', API, 'count', (m) => (m < 1 ? 6 : Math.max(2, 6 - Math.floor((m + 1) / 1.2)))),
   series('db_pool_in_use', API, 'connections', (m) => (m < -3 ? 12 : 5)),
   series('db_pool_waiters', API, 'count', (m) => (m < -1 ? 0 : Math.min(63, m * 4.2))),
-  series('cloudsql_connections', 'oms-primary', 'connections', (m) => (m < -3 ? 74 : 61)),
-  series('cloudsql_cpu', 'oms-primary', 'percent', () => 22 + Math.random() * 3),
+  series('cloudsql_connections', 'orders-db', 'connections', (m) => (m < -3 ? 74 : 61)),
+  series('cloudsql_cpu', 'orders-db', 'percent', () => 22 + Math.random() * 3),
   series('orders_submitted', API, 'count/min', (m) => (m < 0 ? 1420 + Math.sin(m) * 40 : Math.max(480, 1420 - m * 62))),
 ];
 
@@ -262,9 +262,9 @@ export const CHANGES: ChangeRecord[] = [
   {
     id: 'CHG-4471',
     type: 'deployment',
-    title: 'oms-api 2.14.3 - tune database connection pool',
-    author: 'm.okafor@northwind.example',
-    service: 'oms-api',
+    title: 'orders-api 2.14.3 - tune database connection pool',
+    author: 'm.okafor@example.com',
+    service: 'orders-api',
     timestamp: at(-4),
     summary:
       'Reduced DB_MAX_POOL_SIZE from 50 to 5 to address a Cloud SQL connection-count alert raised last week.',
@@ -273,18 +273,18 @@ export const CHANGES: ChangeRecord[] = [
       from_version: '2.14.2',
       to_version: '2.14.3',
       changed_env: { DB_MAX_POOL_SIZE: { from: '50', to: '5' } },
-      approved_by: 'r.castellanos@northwind.example',
+      approved_by: 'r.castellanos@example.com',
       change_window: 'standard',
       load_tested: false,
     },
     pr: 142,
-    rollbackCommand: 'kubectl rollout undo deployment/oms-api -n oms-prod',
+    rollbackCommand: 'kubectl rollout undo deployment/orders-api -n orders-prod',
   },
   {
     id: 'CHG-4468',
     type: 'infrastructure',
-    title: 'Enable point-in-time recovery on oms-primary',
-    author: 'platform-bot@northwind.example',
+    title: 'Enable point-in-time recovery on orders-db',
+    author: 'platform-bot@example.com',
     service: 'cloudsql',
     timestamp: at(-180),
     summary: 'Terraform apply enabling PITR and extending backup retention to 7 days.',
@@ -295,8 +295,8 @@ export const CHANGES: ChangeRecord[] = [
     id: 'CHG-4465',
     type: 'feature_flag',
     title: 'Enable express_checkout for 10% of traffic',
-    author: 'j.patel@northwind.example',
-    service: 'oms-api',
+    author: 'j.patel@example.com',
+    service: 'orders-api',
     timestamp: at(-420),
     summary: 'Gradual rollout of express checkout flow.',
     details: { flag: 'express_checkout', rollout_percent: 10, prior_percent: 0 },
@@ -304,9 +304,9 @@ export const CHANGES: ChangeRecord[] = [
   {
     id: 'CHG-4460',
     type: 'config',
-    title: 'Raise HPA max replicas for oms-fulfilment 8 -> 12',
-    author: 'm.okafor@northwind.example',
-    service: 'oms-fulfilment',
+    title: 'Raise HPA max replicas for orders-fulfilment 8 -> 12',
+    author: 'm.okafor@example.com',
+    service: 'orders-fulfilment',
     timestamp: at(-1440),
     summary: 'Capacity increase ahead of seasonal volume.',
     details: { from: 8, to: 12 },
@@ -320,12 +320,12 @@ export const SEED_ALERTS = [
   {
     id: 'ALERT-9F3C',
     severity: 'critical' as const,
-    service: 'oms-api',
-    title: 'OMS API 5xx error rate above SLO threshold',
+    service: 'orders-api',
+    title: 'Orders API 5xx error rate above SLO threshold',
     description:
       'Order submission endpoint returning 503 at 64% of requests. Error budget for the hour is exhausted. Customer-facing order placement is failing.',
     resource:
-      'projects/oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-api',
+      'projects/orders-prod/locations/us-central1/clusters/orders-prod/workloads/orders-api',
     metric: 'error_rate_5xx',
     value: '64%',
     threshold: '1%',
@@ -335,11 +335,11 @@ export const SEED_ALERTS = [
   {
     id: 'ALERT-7B21',
     severity: 'critical' as const,
-    service: 'oms-api',
-    title: 'OMS API replica availability degraded',
+    service: 'orders-api',
+    title: 'Orders API replica availability degraded',
     description: 'Only 2 of 6 desired replicas are passing readiness checks.',
     resource:
-      'projects/oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-api',
+      'projects/orders-prod/locations/us-central1/clusters/orders-prod/workloads/orders-api',
     metric: 'replicas_ready',
     value: '2',
     threshold: '>= 4',
@@ -349,11 +349,11 @@ export const SEED_ALERTS = [
   {
     id: 'ALERT-2D88',
     severity: 'warning' as const,
-    service: 'oms-api',
-    title: 'OMS API p99 latency elevated',
+    service: 'orders-api',
+    title: 'Orders API p99 latency elevated',
     description: 'p99 request latency has exceeded 2s, up from a 115ms baseline.',
     resource:
-      'projects/oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-api',
+      'projects/orders-prod/locations/us-central1/clusters/orders-prod/workloads/orders-api',
     metric: 'request_latency_p99',
     value: '2100ms',
     threshold: '500ms',
@@ -364,14 +364,14 @@ export const SEED_ALERTS = [
 
 /** Service-level objectives, used when reasoning about RPO/RTO impact. */
 export const SLO_TARGETS = {
-  'oms-api': {
+  'orders-api': {
     availability: '99.9%',
     latencyP99Ms: 500,
     rpoMinutes: 5,
     rtoMinutes: 15,
     tier: 'tier-1-revenue-critical',
   },
-  'oms-fulfilment': {
+  'orders-fulfilment': {
     availability: '99.5%',
     latencyP99Ms: 800,
     rpoMinutes: 15,

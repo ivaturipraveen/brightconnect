@@ -40,7 +40,7 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen flex-col bg-ink-950">
-      <header className="sticky top-0 z-30 border-b border-ink-700 bg-ink-900/95 backdrop-blur">
+      <header className="sticky top-0 z-30 border-b border-ink-700 bg-ink-900">
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5 sm:px-6">
           <div className="flex items-center gap-2.5">
             <Logo />
@@ -50,7 +50,7 @@ export default function App() {
               </div>
               <div className="text-[11px] text-ink-400">
                 AI engineering workforce
-                {config?.customerName ? ` · ${config.customerName} OMS` : ''}
+                {config?.customerName ? ` · ${config.customerName} orders service` : ''}
               </div>
             </div>
           </div>
@@ -63,7 +63,7 @@ export default function App() {
                 className={({ isActive }) =>
                   `rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors ${
                     isActive
-                      ? 'bg-ink-700 text-ink-100'
+                      ? 'bg-ink-800 text-ink-100'
                       : 'text-ink-300 hover:bg-ink-800 hover:text-ink-100'
                   }`
                 }

@@ -19,7 +19,7 @@ will recognise his own words, and that is what makes it land.
 | "current approach is all-hands-on-deck with no structured triage" | Incident mission: three investigations dispatched in parallel, in seconds. |
 | "AI to analyze alerts, cross-reference logs, GCP configs, GitHub, and change management" | Exactly the four tools the SRE agents hold. |
 | "automated root cause analysis, ticket creation, and auto-remediation" | The full incident mission, end to end. |
-| "Ties directly to RPO/RTO targets for the OMS platform" | The RCA states impact against the 5 min RPO / 15 min RTO. |
+| "Ties directly to RPO/RTO targets for the orders platform" | The RCA states impact against the 5 min RPO / 15 min RTO. |
 | "feed PRDs, ARDs, and tech specs into an agentic platform" | The mission composer takes exactly those. |
 | "infra-as-code, software dev, docs-as-code, monitoring, security remediations, linting" | The SDLC department, one agent each. |
 | "Human stays in loop only for go/no-go on PRs" | The approval gate. Literally the only click he makes. |
@@ -54,7 +54,7 @@ stop and fix it before anyone walks in.
 > "Let's start where you said it hurts most. Your words were all-hands-on-deck with no
 > structured triage. Here's a tier-1 alert on your order management platform."
 
-**Incidents page.** Three alerts firing on `oms-api`. 64% of order submissions failing.
+**Incidents page.** Three alerts firing on `orders-api`. 64% of order submissions failing.
 Point at the resource path — it is GCP-shaped, because that is his world.
 
 **Click Dispatch fleet.**

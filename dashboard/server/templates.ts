@@ -20,8 +20,8 @@ export const TEMPLATES: Template[] = [
     input: `# PRD: Order Status Webhooks
 
 ## Background
-Northwind's larger retail partners currently poll \`GET /v1/orders/{id}\` every 30 seconds to
-track fulfilment state. At current partner counts this is roughly 40% of all OMS API
+'s larger retail partners currently poll \`GET /v1/orders/{id}\` every 30 seconds to
+track fulfilment state. At current partner counts this is roughly 40% of all Orders API
 traffic and it contributes materially to the load on the order service. Partners have
 also asked repeatedly for faster notification of state changes.
 
@@ -60,7 +60,7 @@ order changes state, so they can stop polling.
 
 ## Context
 A production incident was caused by a deployment that reduced DB_MAX_POOL_SIZE from 50
-to 5 on oms-api. The change passed review and deployed cleanly; nothing in the pipeline
+to 5 on orders-api. The change passed review and deployed cleanly; nothing in the pipeline
 recognised that the new value could not sustain production traffic. The service
 degraded within four minutes of rollout.
 
@@ -88,16 +88,16 @@ Make this class of change impossible to ship unnoticed.
     kind: 'sdlc',
     title: 'Autoscaling policy as code (ARD)',
     blurb: 'Infrastructure-weighted mission. Exercises the IaC and observability agents.',
-    input: `# ARD: Standardise Autoscaling Policy Across OMS Workloads
+    input: `# ARD: Standardise Autoscaling Policy Across orders service Workloads
 
 ## Context
-Autoscaling configuration on OMS workloads has drifted. Some deployments scale on CPU
+Autoscaling configuration on orders service workloads has drifted. Some deployments scale on CPU
 alone, some have min replicas set below what the service needs to survive a single zone
 loss, and none scale on a signal that reflects actual user-visible load.
 
 ## Decision to make
 Define one autoscaling policy, expressed as Terraform modules, applied consistently
-across OMS workloads.
+across orders service workloads.
 
 ## Requirements
 - Minimum replicas must survive the loss of one zone for tier-1 services.

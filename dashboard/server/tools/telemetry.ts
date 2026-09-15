@@ -53,7 +53,7 @@ const queryAlerts = tool(
   {
     status: z.enum(['firing', 'acknowledged', 'resolved', 'any']).optional()
       .describe('Filter by alert status. Defaults to any.'),
-    service: z.string().optional().describe('Filter to a single service, e.g. oms-api.'),
+    service: z.string().optional().describe('Filter to a single service, e.g. orders-api.'),
   },
   async ({ status, service }) => {
     let rows = await alertStore.list();
@@ -78,7 +78,7 @@ const queryLogs = tool(
   'query_logs',
   'Search platform and application logs. Supports filtering by service, minimum severity, and a free-text match. Returns entries in chronological order.',
   {
-    service: z.string().optional().describe('Service name, e.g. oms-api. Omit for all services.'),
+    service: z.string().optional().describe('Service name, e.g. orders-api. Omit for all services.'),
     minSeverity: z.enum(['INFO', 'WARNING', 'ERROR', 'CRITICAL']).optional()
       .describe('Only return entries at or above this severity.'),
     contains: z.string().optional().describe('Case-insensitive substring to match in the log message.'),
@@ -117,7 +117,7 @@ const queryMetrics = tool(
     metric: z.string().describe(
       'Metric name. Available: request_latency_p99, error_rate_5xx, replicas_ready, db_pool_in_use, db_pool_waiters, cloudsql_connections, cloudsql_cpu, orders_submitted.',
     ),
-    resource: z.string().optional().describe('Resource the metric belongs to, e.g. oms-api.'),
+    resource: z.string().optional().describe('Resource the metric belongs to, e.g. orders-api.'),
   },
   async ({ metric, resource }) => {
     const found = METRICS.filter(
@@ -155,15 +155,15 @@ function recoveryLogs(): LogEntry[] {
     (a) => a.actionId === 'rollback_deployment' || a.actionId === 'update_config',
   );
   if (!fix) return [];
-  const api = 'projects/oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-api';
+  const api = 'projects/orders-prod/locations/us-central1/clusters/orders-prod/workloads/orders-api';
   const t = (offsetSec: number) =>
     new Date(new Date(fix.appliedAt).getTime() + offsetSec * 1000).toISOString();
   return [
-    { timestamp: t(5), severity: 'INFO', resource: api, service: 'oms-api', message: 'Rolling update started (remediation)' },
-    { timestamp: t(40), severity: 'INFO', resource: api, service: 'oms-api', message: 'Config loaded: DB_MAX_POOL_SIZE=50 DB_CONNECTION_TIMEOUT_MS=2000' },
-    { timestamp: t(75), severity: 'INFO', resource: api, service: 'oms-api', message: 'Rolling update complete: 6/6 pods ready' },
-    { timestamp: t(110), severity: 'INFO', resource: api, service: 'oms-api', message: 'Connection pool healthy: pool_in_use=14/50 waiters=0' },
-    { timestamp: t(150), severity: 'INFO', resource: api, service: 'oms-api', message: 'Handled 1,398 requests in last window; p99=121ms; 5xx rate 0.03%' },
+    { timestamp: t(5), severity: 'INFO', resource: api, service: 'orders-api', message: 'Rolling update started (remediation)' },
+    { timestamp: t(40), severity: 'INFO', resource: api, service: 'orders-api', message: 'Config loaded: DB_MAX_POOL_SIZE=50 DB_CONNECTION_TIMEOUT_MS=2000' },
+    { timestamp: t(75), severity: 'INFO', resource: api, service: 'orders-api', message: 'Rolling update complete: 6/6 pods ready' },
+    { timestamp: t(110), severity: 'INFO', resource: api, service: 'orders-api', message: 'Connection pool healthy: pool_in_use=14/50 waiters=0' },
+    { timestamp: t(150), severity: 'INFO', resource: api, service: 'orders-api', message: 'Handled 1,398 requests in last window; p99=121ms; 5xx rate 0.03%' },
   ];
 }
 
@@ -172,7 +172,7 @@ const describeResource = tool(
   'Get the current configuration and state of a cloud resource - replica counts, environment variables, probes, autoscaling, instance settings. Use this to find misconfiguration.',
   {
     name: z.string().optional().describe(
-      'Full or partial resource name, e.g. "oms-api". Omit to list every resource.',
+      'Full or partial resource name, e.g. "orders-api". Omit to list every resource.',
     ),
   },
   async ({ name }) => {
@@ -200,7 +200,7 @@ const describeResource = tool(
 /** Reflect an applied fix in the resource view the agent reads back. */
 function projectRecovery(r: ResourceDescriptor): ResourceDescriptor {
   if (!incidentState.remediated) return r;
-  if (!r.name.includes('oms-api') && !r.name.includes('oms-api-lb')) return r;
+  if (!r.name.includes('orders-api') && !r.name.includes('orders-api-lb')) return r;
 
   const cfg = structuredClone(r.config) as Record<string, any>;
   if (cfg.replicas) cfg.replicas = { desired: 6, ready: 6, unavailable: 0 };
@@ -208,7 +208,7 @@ function projectRecovery(r: ResourceDescriptor): ResourceDescriptor {
     const patch = incidentState.applied.find((a) => a.actionId === 'update_config');
     cfg.env = { ...cfg.env, DB_MAX_POOL_SIZE: String(patch?.params?.DB_MAX_POOL_SIZE ?? 50) };
   }
-  if (cfg.image) cfg.image = 'gcr.io/oms-prod/oms-api:2.14.2';
+  if (cfg.image) cfg.image = 'gcr.io/orders-prod/orders-api:2.14.2';
   if (cfg.healthyBackends !== undefined) cfg.healthyBackends = 6;
   return { ...r, state: 'HEALTHY', config: cfg };
 }
@@ -217,7 +217,7 @@ export const telemetryServer = createSdkMcpServer({
   name: 'telemetry',
   version: '1.0.0',
   instructions:
-    'Read-only observability for the OMS platform: alerts, logs, metric time series, and resource configuration.',
+    'Read-only observability for the orders platform: alerts, logs, metric time series, and resource configuration.',
   tools: [queryAlerts, queryLogs, queryMetrics, describeResource],
 });
 
@@ -278,6 +278,6 @@ export const changeMgmtServer = createSdkMcpServer({
   name: 'changemgmt',
   version: '1.0.0',
   instructions:
-    'Change management records for the OMS platform: deployments, config changes, infrastructure applies, feature flags.',
+    'Change management records for the orders platform: deployments, config changes, infrastructure applies, feature flags.',
   tools: [recentChanges, describeChange],
 });

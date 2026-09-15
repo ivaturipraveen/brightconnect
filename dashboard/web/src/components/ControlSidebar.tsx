@@ -1,0 +1,150 @@
+import { Link } from 'react-router-dom';
+import type { Overview } from '../lib/api.ts';
+
+/**
+ * The right-hand rail: what this session has done, who is working, and where
+ * the things they build actually live.
+ *
+ * The fleet list is the point. "Seventeen agents" is a claim; seventeen rows
+ * with roles, models and a live status is the evidence.
+ */
+
+const DEPARTMENTS = [
+  { id: 'sdlc', label: 'Software delivery' },
+  { id: 'sre', label: 'Site reliability' },
+  { id: 'platform', label: 'Platform' },
+] as const;
+
+export default function ControlSidebar({ overview }: { overview: Overview | null }) {
+  const s = overview?.session;
+
+  return (
+    <aside className="flex h-full flex-col gap-4 overflow-y-auto">
+      <section className="rounded-lg border border-ink-700 bg-ink-900/80">
+        <h2 className="border-b border-ink-700 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-ink-400">
+          Session
+        </h2>
+        <div className="grid grid-cols-3 divide-x divide-ink-800">
+          <Stat label="working" value={s?.agentsWorking ?? 0} highlight={(s?.agentsWorking ?? 0) > 0} />
+          <Stat label="missions" value={s?.totalMissions ?? 0} />
+          <Stat label="artifacts" value={s?.artifacts ?? 0} />
+        </div>
+        <div className="grid grid-cols-2 divide-x divide-ink-800 border-t border-ink-800">
+          <Stat label="awaiting you" value={s?.pendingApprovals ?? 0} highlight={(s?.pendingApprovals ?? 0) > 0} warn />
+          <Stat label="spend" value={`$${(s?.spendUsd ?? 0).toFixed(2)}`} />
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-ink-700 bg-ink-900/80">
+        <h2 className="flex items-center gap-2 border-b border-ink-700 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-ink-400">
+          Agent fleet
+          <span className="ml-auto font-mono text-[10px] normal-case tracking-normal text-ink-500">
+            {overview?.fleet.length ?? 0}
+          </span>
+        </h2>
+
+        {DEPARTMENTS.map((dept) => {
+          const members = overview?.fleet.filter((m) => m.department === dept.id) ?? [];
+          if (members.length === 0) return null;
+          return (
+            <div key={dept.id}>
+              <div className="bg-ink-850/60 px-3 py-1 text-[10px] uppercase tracking-wide text-ink-500">
+                {dept.label}
+              </div>
+              <ul className="divide-y divide-ink-800/60">
+                {members.map((m) => (
+                  <li key={m.id} className="flex items-start gap-2.5 px-3 py-1.5">
+                    <Avatar name={m.name} working={m.status === 'working'} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate text-[12px] font-medium text-ink-100">{m.name}</span>
+                        {m.status === 'working' ? (
+                          m.missionId ? (
+                            <Link
+                              to={`/missions/${m.missionId}`}
+                              className="rounded bg-signal-500/20 px-1 py-px text-[9px] font-medium text-signal-300 hover:bg-signal-500/30"
+                            >
+                              working
+                            </Link>
+                          ) : (
+                            <span className="rounded bg-signal-500/20 px-1 py-px text-[9px] text-signal-300">working</span>
+                          )
+                        ) : (
+                          <span className="text-[9px] text-ink-600">idle</span>
+                        )}
+                      </div>
+                      <div className="truncate text-[10px] leading-tight text-ink-500">{m.role}</div>
+                    </div>
+                    {m.runs > 0 && (
+                      <span className="shrink-0 font-mono text-[10px] text-ink-600">{m.runs}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </section>
+
+      <section className="rounded-lg border border-ink-700 bg-ink-900/80">
+        <h2 className="border-b border-ink-700 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-ink-400">
+          Services
+        </h2>
+        <ul className="divide-y divide-ink-800">
+          <ServiceLink href={overview?.services.product ?? '/app/'} label="Chat UI" hint="the product being maintained" external />
+          <ServiceLink href={overview?.services.productApi ?? '/app/api/health'} label="Chat API" hint="health" external />
+          <ServiceLink href={overview?.services.repo ?? '#'} label="Repository" hint="issues and pull requests" external />
+        </ul>
+      </section>
+    </aside>
+  );
+}
+
+function Stat({
+  label, value, highlight, warn,
+}: { label: string; value: number | string; highlight?: boolean; warn?: boolean }) {
+  return (
+    <div className="px-3 py-2.5 text-center">
+      <div
+        className={`font-mono text-lg font-semibold tabular-nums ${
+          highlight ? (warn ? 'text-warn-400' : 'text-signal-400') : 'text-ink-100'
+        }`}
+      >
+        {value}
+      </div>
+      <div className="mt-0.5 text-[10px] uppercase tracking-wide text-ink-500">{label}</div>
+    </div>
+  );
+}
+
+/** Initial-letter avatar, so a long fleet list is scannable at a glance. */
+function Avatar({ name, working }: { name: string; working: boolean }) {
+  return (
+    <span
+      className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-[10px] font-semibold ${
+        working ? 'bg-signal-500/25 text-signal-300 pulse-ring' : 'bg-ink-800 text-ink-400'
+      }`}
+      aria-hidden
+    >
+      {name.split(' ').map((w) => w[0]).join('').slice(0, 2)}
+    </span>
+  );
+}
+
+function ServiceLink({
+  href, label, hint, external,
+}: { href: string; label: string; hint: string; external?: boolean }) {
+  return (
+    <li>
+      <a
+        href={href}
+        {...(external ? { target: '_blank', rel: 'noreferrer' } : {})}
+        className="flex items-center gap-2 px-3 py-2 hover:bg-ink-850"
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-ok-500" aria-hidden />
+        <span className="text-[12px] text-ink-200">{label}</span>
+        <span className="ml-auto truncate text-[10px] text-ink-500">{hint}</span>
+      </a>
+    </li>
+  );
+}

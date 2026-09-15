@@ -79,6 +79,55 @@ app.get('/api/config', async () => ({
   fleetSize: loadFleet().length,
 }));
 
+/**
+ * Everything the control panel's sidebar needs in one call: session counters,
+ * each agent with whether it is working right now, and where the services live.
+ */
+app.get('/api/overview', async () => {
+  const [all, pending, arts, stats] = await Promise.all([
+    missions.list(200),
+    approvals.listPending(),
+    artifacts.listAll(200),
+    agentRuns.stats(),
+  ]);
+  const active = all.filter((m) => ['queued', 'running', 'awaiting_approval'].includes(m.status));
+
+  // Which agents are mid-task, across every running mission.
+  const runningByAgent = new Map<string, string>();
+  for (const m of active) {
+    for (const r of await agentRuns.listByMission(m.id)) {
+      if (r.status === 'running') runningByAgent.set(r.agentType, m.id);
+    }
+  }
+
+  const statsBy = new Map(stats.map((s) => [s.agentType, s]));
+  return {
+    session: {
+      activeMissions: active.length,
+      totalMissions: all.length,
+      artifacts: arts.length,
+      pendingApprovals: pending.length,
+      spendUsd: Number(all.reduce((sum, m) => sum + m.costUsd, 0).toFixed(3)),
+      agentsWorking: runningByAgent.size,
+    },
+    fleet: loadFleet().map((m) => ({
+      id: m.id,
+      name: m.name,
+      department: m.department,
+      role: m.role,
+      model: m.model,
+      runs: statsBy.get(m.id)?.runs ?? 0,
+      status: runningByAgent.has(m.id) ? 'working' : 'idle',
+      missionId: runningByAgent.get(m.id) ?? null,
+    })),
+    services: {
+      product: '/app/',
+      productApi: '/app/api/health',
+      repo: `https://github.com/${config.github.owner}/${config.github.repo}`,
+    },
+  };
+});
+
 /* ----------------------------------------------------------------- fleet */
 
 app.get('/api/fleet', async () => {

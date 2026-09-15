@@ -96,7 +96,7 @@ export async function* runConsoleTurn(
     maxTurns: 20,
     maxBudgetUsd: 1,
     mcpServers: {
-      platform: createConsoleServer(ctx),
+     platform: createConsoleServer(ctx),
       documents: createDocumentServer(scratchDir),
     },
     env: { ...process.env, ANTHROPIC_API_KEY: config.anthropic.apiKey },

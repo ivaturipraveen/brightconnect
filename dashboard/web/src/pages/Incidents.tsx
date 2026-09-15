@@ -36,7 +36,7 @@ export default function Incidents() {
         <div>
           <h1 className="text-xl font-semibold text-ink-100">Incidents</h1>
           <p className="mt-0.5 max-w-3xl text-[13px] text-ink-400">
-            Live alerts from the OMS platform. Dispatching one starts an incident mission: the
+            Live alerts from the orders platform. Dispatching one starts an incident mission: the
             fleet investigates logs, configuration, and recent changes in parallel, establishes
             root cause, files the ticket, and proposes remediation for your approval.
           </p>

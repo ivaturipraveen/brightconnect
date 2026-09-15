@@ -133,6 +133,28 @@ export interface ConsoleEvent {
   cost?: number;
 }
 
+export interface Overview {
+  session: {
+    activeMissions: number;
+    totalMissions: number;
+    artifacts: number;
+    pendingApprovals: number;
+    spendUsd: number;
+    agentsWorking: number;
+  };
+  fleet: Array<{
+    id: string;
+    name: string;
+    department: 'sdlc' | 'sre' | 'platform';
+    role: string;
+    model: string;
+    runs: number;
+    status: 'working' | 'idle';
+    missionId: string | null;
+  }>;
+  services: { product: string; productApi: string; repo: string };
+}
+
 export interface AgentFile {
   id: string;
   content: string;
@@ -192,6 +214,7 @@ export const api = {
 
   artifacts: () => req<Artifact[]>('/artifacts'),
 
+  overview: () => req<Overview>('/overview'),
   inboundEvents: () => req<InboundEvent[]>('/events/inbound'),
   pollNow: () => req<{ checked: number; dispatched: number }>('/events/poll', { method: 'POST' }),
 

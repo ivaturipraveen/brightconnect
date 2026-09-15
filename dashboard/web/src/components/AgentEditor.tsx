@@ -69,7 +69,7 @@ export default function AgentEditor({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-stretch justify-end bg-ink-100/30 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
@@ -105,7 +105,7 @@ export default function AgentEditor({
           value={content}
           onChange={(e) => { setContent(e.target.value); setSaved(false); }}
           spellCheck={false}
-          className="flex-1 resize-none bg-ink-950 px-4 py-3 font-mono text-[12px] leading-relaxed text-ink-200 focus:outline-none"
+          className="flex-1 resize-none bg-ink-850 px-4 py-3 font-mono text-[12px] leading-relaxed text-ink-200 focus:outline-none"
           placeholder={status === 'loading' ? 'Loading…' : ''}
         />
 

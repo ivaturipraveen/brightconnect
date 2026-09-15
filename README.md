@@ -114,7 +114,7 @@ says exactly what is missing.
 
 ### The simulated environment
 
-`src/sim/environment.ts` models the OMS platform in GCP shapes — Cloud Logging
+`src/sim/environment.ts` models the orders platform in GCP shapes — Cloud Logging
 entries, Cloud Monitoring series, GKE workloads, Cloud SQL, change records.
 
 It contains a genuine causal chain the agents have to *find*: a deployment four minutes

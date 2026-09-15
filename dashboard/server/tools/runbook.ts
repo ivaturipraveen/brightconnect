@@ -120,7 +120,7 @@ const executeAction = tool(
   'Execute a remediation action. High-impact actions pause for human approval before running - propose clearly and expect to wait.',
   {
     actionId: z.enum(ACTION_IDS).describe('Which action to run. Must be one of the listed ids exactly.'),
-    target: z.string().describe('Resource to act on, e.g. oms-api.'),
+    target: z.string().describe('Resource to act on, e.g. orders-api.'),
     reason: z.string().describe('Why this action resolves the incident. Shown to the human approver.'),
     // A JSON string rather than z.record: a record schema does not convert to
     // valid JSON schema here, and the failure is silent and total - the tool is
@@ -209,7 +209,7 @@ return createSdkMcpServer({
   name: 'runbook',
   version: '1.0.0',
   instructions:
-    'Remediation actions for the OMS platform. High-impact actions pause for human approval before they run.',
+    'Remediation actions for the orders platform. High-impact actions pause for human approval before they run.',
   tools: [listActions, executeAction],
 });
 }

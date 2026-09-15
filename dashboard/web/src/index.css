@@ -1,33 +1,37 @@
 @import "tailwindcss";
 
 /*
-  Operations-console palette. Dark by default: this is a wall-display surface
-  that sits open next to a terminal, and the demo runs in a dim meeting room.
+  Light control-panel palette.
+
+  The token names run ink-950 (page) through ink-100 (primary text), and every
+  component is written against those names rather than against colours. So the
+  whole surface changes here, in one place, and nothing else has to move - which
+  is the reason for having tokens at all.
 */
 @theme {
-  --color-ink-950: #07090d;
-  --color-ink-900: #0b0e14;
-  --color-ink-850: #10141c;
-  --color-ink-800: #151a24;
-  --color-ink-700: #1e2430;
-  --color-ink-600: #2a3241;
-  --color-ink-500: #3c4658;
-  --color-ink-400: #64708a;
-  --color-ink-300: #8e99b0;
-  --color-ink-200: #b9c2d4;
-  --color-ink-100: #e3e8f2;
+  --color-ink-950: #f7f8fa;   /* page */
+  --color-ink-900: #ffffff;   /* panels */
+  --color-ink-850: #f4f6f9;   /* sunken: inputs, table stripes */
+  --color-ink-800: #eceff4;   /* hover */
+  --color-ink-700: #dfe3ea;   /* borders */
+  --color-ink-600: #cbd2dc;   /* stronger borders, control outlines */
+  --color-ink-500: #7e8899;   /* faint text - 3.37:1 on the page background */
+  --color-ink-400: #667085;   /* muted text */
+  --color-ink-300: #475467;   /* secondary text */
+  --color-ink-200: #344054;   /* strong text */
+  --color-ink-100: #101828;   /* primary text */
 
-  --color-signal-500: #3b82f6;
-  --color-signal-400: #60a5fa;
-  --color-signal-300: #93c5fd;
+  --color-signal-500: #2563eb;
+  --color-signal-400: #3b82f6;
+  --color-signal-300: #1d4ed8;   /* links: darker, for contrast on white */
 
-  --color-ok-500: #10b981;
-  --color-ok-400: #34d399;
-  --color-warn-500: #f59e0b;
-  --color-warn-400: #fbbf24;
-  --color-crit-500: #ef4444;
-  --color-crit-400: #f87171;
-  --color-think-400: #a78bfa;
+  --color-ok-500: #059669;
+  --color-ok-400: #047857;
+  --color-warn-500: #d97706;
+  --color-warn-400: #b45309;
+  --color-crit-500: #dc2626;
+  --color-crit-400: #b91c1c;
+  --color-think-400: #7c3aed;
 
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, monospace;
 }
@@ -41,16 +45,16 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Thin scrollbars so dense panels don't lose horizontal space. */
+/* Thin scrollbars so dense panels keep their horizontal space. */
 * { scrollbar-width: thin; scrollbar-color: var(--color-ink-600) transparent; }
 *::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-thumb { background: var(--color-ink-600); border-radius: 4px; }
 *::-webkit-scrollbar-track { background: transparent; }
 
 @keyframes pulse-ring {
-  0%   { box-shadow: 0 0 0 0 rgb(59 130 246 / 0.5); }
-  70%  { box-shadow: 0 0 0 6px rgb(59 130 246 / 0); }
-  100% { box-shadow: 0 0 0 0 rgb(59 130 246 / 0); }
+  0%   { box-shadow: 0 0 0 0 rgb(37 99 235 / 0.35); }
+  70%  { box-shadow: 0 0 0 6px rgb(37 99 235 / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(37 99 235 / 0); }
 }
 .pulse-ring { animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
 
@@ -60,7 +64,6 @@ body {
 }
 .slide-in { animation: slide-in 0.18s ease-out; }
 
-/* Respect users who have asked the OS to reduce motion. */
 @media (prefers-reduced-motion: reduce) {
   .pulse-ring, .slide-in { animation: none; }
 }

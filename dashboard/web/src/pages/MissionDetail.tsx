@@ -136,7 +136,7 @@ export default function MissionDetail() {
                   key={v}
                   onClick={() => setView(v)}
                   className={`rounded px-2 py-0.5 text-[12px] font-semibold uppercase tracking-wide transition-colors ${
-                    view === v ? 'bg-ink-700 text-ink-100' : 'text-ink-400 hover:text-ink-200'
+                    view === v ? 'bg-ink-800 text-ink-100' : 'text-ink-400 hover:text-ink-200'
                   }`}
                 >
                   {v}
@@ -369,7 +369,7 @@ function ApprovalCard({
             <summary className="cursor-pointer text-[12px] text-signal-300 hover:underline">
               Inspect the exact action
             </summary>
-            <pre className="mt-1.5 max-h-64 overflow-auto rounded border border-ink-700 bg-ink-950 p-2.5 font-mono text-[11px] leading-relaxed text-ink-300">
+            <pre className="mt-1.5 max-h-64 overflow-auto rounded border border-ink-700 bg-ink-850 p-2.5 font-mono text-[11px] leading-relaxed text-ink-300">
               {JSON.stringify(approval.input, null, 2)}
             </pre>
           </details>

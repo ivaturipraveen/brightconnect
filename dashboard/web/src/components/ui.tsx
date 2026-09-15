@@ -13,7 +13,7 @@ export function Panel({
 }) {
   return (
     <section
-      className={`rounded-lg border border-ink-700 bg-ink-900/80 backdrop-blur-sm ${className}`}
+      className={`rounded-lg border border-ink-700 bg-ink-900 shadow-sm ${className}`}
     >
       {(title || actions) && (
         <header className="flex items-center justify-between gap-3 border-b border-ink-700 px-4 py-2.5">
@@ -29,12 +29,12 @@ export function Panel({
 }
 
 const TONES = {
-  neutral: 'bg-ink-700 text-ink-200 border-ink-600',
-  info: 'bg-signal-500/15 text-signal-300 border-signal-500/30',
-  ok: 'bg-ok-500/15 text-ok-400 border-ok-500/30',
-  warn: 'bg-warn-500/15 text-warn-400 border-warn-500/30',
-  crit: 'bg-crit-500/15 text-crit-400 border-crit-500/30',
-  think: 'bg-think-400/15 text-think-400 border-think-400/30',
+  neutral: 'bg-ink-800 text-ink-300 border-ink-600',
+  info: 'bg-signal-500/10 text-signal-300 border-signal-500/25',
+  ok: 'bg-ok-500/10 text-ok-400 border-ok-500/25',
+  warn: 'bg-warn-500/10 text-warn-400 border-warn-500/25',
+  crit: 'bg-crit-500/10 text-crit-400 border-crit-500/25',
+  think: 'bg-think-400/10 text-think-400 border-think-400/25',
 } as const;
 
 export type Tone = keyof typeof TONES;
@@ -63,10 +63,10 @@ export function Button({
   title?: string;
 }) {
   const variants = {
-    default: 'bg-ink-700 hover:bg-ink-600 text-ink-100 border-ink-600',
+    default: 'bg-ink-900 hover:bg-ink-800 text-ink-200 border-ink-600',
     primary: 'bg-signal-500 hover:bg-signal-400 text-white border-signal-400',
     danger: 'bg-crit-500/90 hover:bg-crit-500 text-white border-crit-400',
-    ghost: 'bg-transparent hover:bg-ink-800 text-ink-300 border-transparent',
+    ghost: 'bg-transparent hover:bg-ink-800 text-ink-400 border-transparent',
   };
   return (
     <button

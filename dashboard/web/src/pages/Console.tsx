@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, type Attachment, type ConsoleEvent, type Mission } from '../lib/api.ts';
+import { api, type Attachment, type ConsoleEvent, type Overview } from '../lib/api.ts';
 import { useActivityStream } from '../lib/stream.ts';
-import { Badge, Button, Panel, StatusDot, fmtCost, relTime } from '../components/ui.tsx';
+import { Badge, Button, Panel, fmtCost } from '../components/ui.tsx';
+import ControlSidebar from '../components/ControlSidebar.tsx';
 
 /**
  * The console: type a task or a question.
@@ -28,13 +29,20 @@ export default function Console() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [missions, setMissions] = useState<Mission[]>([]);
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [view, setView] = useState<'console' | 'preview'>('console');
   const endRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const loadMissions = () => void api.missions().then(setMissions).catch(() => {});
-  useEffect(loadMissions, []);
-  useActivityStream({ onMission: loadMissions });
+  const loadOverview = () => void api.overview().then(setOverview).catch(() => {});
+  useEffect(() => {
+    loadOverview();
+    // The fleet's status is the point of the sidebar, so keep it fresh even
+    // when no stream event happens to fire.
+    const id = setInterval(loadOverview, 5000);
+    return () => clearInterval(id);
+  }, []);
+  useActivityStream({ onMission: loadOverview, onEvent: loadOverview });
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -104,7 +112,7 @@ export default function Console() {
             patch((t) => ({ ...t, tools: [...(t.tools ?? []), e.text!] }));
           } else if (e.type === 'mission' && e.missionId) {
             patch((t) => ({ ...t, missionIds: [...(t.missionIds ?? []), e.missionId!] }));
-            loadMissions();
+            loadOverview();
           } else if (e.type === 'document' && e.document) {
             patch((t) => ({ ...t, documents: [...(t.documents ?? []), e.document!] }));
           } else if (e.type === 'done') {
@@ -124,18 +132,34 @@ export default function Console() {
     }
   };
 
-  const active = missions.filter((m) =>
-    ['queued', 'running', 'awaiting_approval'].includes(m.status),
-  );
-
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
       <Panel
-        title="Console"
+        title={
+          <div className="flex items-center gap-1">
+            {(['console', 'preview'] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={`rounded px-2 py-0.5 text-[12px] font-semibold uppercase tracking-wide transition-colors ${
+                  view === v ? 'bg-ink-800 text-ink-100' : 'text-ink-400 hover:text-ink-200'
+                }`}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+        }
         dense
-        actions={<span className="text-[11px] text-ink-500">ask a question, or describe work to be done</span>}
+        actions={
+          <span className="text-[11px] text-ink-500">
+            {view === 'console'
+              ? 'ask a question, or describe work to be done'
+              : 'the product the fleet maintains, live'}
+          </span>
+        }
       >
-        <div className="flex h-[calc(100vh-230px)] flex-col">
+        <div className={`flex h-[calc(100vh-230px)] flex-col ${view === 'preview' ? 'hidden' : ''}`}>
           <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
             {turns.length === 0 ? (
               <Welcome onPick={setInput} />
@@ -207,40 +231,19 @@ export default function Console() {
             </div>
           </div>
         </div>
+
+        {view === 'preview' && (
+          <div className="h-[calc(100vh-230px)] bg-ink-850">
+            <iframe
+              src="/app/"
+              title="The product the fleet maintains"
+              className="h-full w-full border-0"
+            />
+          </div>
+        )}
       </Panel>
 
-      <div className="space-y-4">
-        <Panel title={`Running now (${active.length})`} dense>
-          {active.length === 0 ? (
-            <div className="px-4 py-5 text-center text-[12px] text-ink-400">Nothing running.</div>
-          ) : (
-            <ul className="divide-y divide-ink-800">
-              {active.map((m) => (
-                <li key={m.id} className="px-3 py-2">
-                  <Link to={`/missions/${m.id}`} className="group flex items-center gap-2">
-                    <StatusDot status={m.status} />
-                    <span className="truncate text-[12px] text-ink-100 group-hover:text-signal-300">
-                      {m.title}
-                    </span>
-                  </Link>
-                  <div className="mt-0.5 pl-4 text-[10px] text-ink-500">
-                    {m.status.replace('_', ' ')} · {relTime(m.createdAt)}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Panel>
-
-        <Panel title="What you can ask" dense>
-          <ul className="space-y-2 px-3 py-3 text-[12px] leading-relaxed text-ink-400">
-            <li><span className="text-ink-200">Build something.</span> "Add a dark theme", "Build a settings page" — becomes a mission with review gates.</li>
-            <li><span className="text-ink-200">Ask about state.</span> "What's running?", "What did that mission find?" — answered straight away.</li>
-            <li><span className="text-ink-200">Produce a document.</span> "Summarise this month as a deck" — PDF, Word or PowerPoint.</li>
-            <li><span className="text-ink-200">Attach a file.</span> A spec, a screenshot, a report — it is read before work starts.</li>
-          </ul>
-        </Panel>
-      </div>
+      <ControlSidebar overview={overview} />
     </div>
   );
 }
