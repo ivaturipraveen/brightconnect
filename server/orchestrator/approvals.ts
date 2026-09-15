@@ -11,7 +11,7 @@
  * tool genuinely does not return until a human decides, whoever called it.
  */
 import { nanoid } from 'nanoid';
-import { approvals, missions } from '../db.ts';
+import { approvals, missions } from '../db/index.ts';
 import { bus } from '../bus.ts';
 import type { Approval } from '../types.ts';
 
@@ -31,7 +31,7 @@ export function registerMissionAbort(missionId: string, controller: AbortControl
     for (const [id, entry] of pending) {
       if (entry.missionId !== missionId) continue;
       pending.delete(id);
-      approvals.decide(id, 'rejected', 'system', 'Mission cancelled while awaiting a decision.');
+      void approvals.decide(id, 'rejected', 'system', 'Mission cancelled while awaiting a decision.');
       entry.resolve({ approved: false, reason: 'Mission cancelled by the operator.' });
     }
   });
@@ -55,9 +55,9 @@ export interface GateRequest {
  * Resolves with the decision; never rejects. The caller decides what a
  * rejection means for its own operation.
  */
-export function requestApproval(req: GateRequest): Promise<{ approved: boolean; reason?: string }> {
+export async function requestApproval(req: GateRequest): Promise<{ approved: boolean; reason?: string }> {
   const id = nanoid(10);
-  const record = approvals.create({
+  const record = await approvals.create({
     id,
     missionId: req.missionId,
     actor: req.actor,
@@ -66,7 +66,7 @@ export function requestApproval(req: GateRequest): Promise<{ approved: boolean; 
     input: req.input,
   });
 
-  missions.setStatus(req.missionId, 'awaiting_approval');
+  await missions.setStatus(req.missionId, 'awaiting_approval');
   bus.publish({ channel: 'mission', payload: { missionId: req.missionId, status: 'awaiting_approval' } });
   bus.emitEvent({
     missionId: req.missionId,
@@ -81,17 +81,17 @@ export function requestApproval(req: GateRequest): Promise<{ approved: boolean; 
 }
 
 /** Record a human decision and unblock the waiting tool. */
-export function resolveApproval(
+export async function resolveApproval(
   approvalId: string,
   decision: 'approved' | 'rejected',
   decidedBy: string,
   reason?: string,
-): Approval | null {
+): Promise<Approval | null> {
   const entry = pending.get(approvalId);
   if (!entry) return null;
   pending.delete(approvalId);
 
-  const record = approvals.decide(approvalId, decision, decidedBy, reason);
+  const record = await approvals.decide(approvalId, decision, decidedBy, reason);
   bus.emitEvent({
     missionId: entry.missionId,
     type: 'approval.decided',
@@ -104,8 +104,8 @@ export function resolveApproval(
   });
 
   // The mission resumes the moment the gate clears.
-  if (missions.get(entry.missionId)?.status === 'awaiting_approval') {
-    missions.setStatus(entry.missionId, 'running');
+  if ((await missions.get(entry.missionId))?.status === 'awaiting_approval') {
+    await missions.setStatus(entry.missionId, 'running');
     bus.publish({ channel: 'mission', payload: { missionId: entry.missionId, status: 'running' } });
   }
 

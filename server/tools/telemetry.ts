@@ -5,7 +5,7 @@
  */
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import { alerts as alertStore } from '../db.ts';
+import { alerts as alertStore } from '../db/index.ts';
 import type { LogEntry, MetricPoint, ResourceDescriptor } from '../sim/environment.ts';
 import {
   CHANGES, INCIDENT_WINDOW, LOGS, METRICS, RESOURCES, SLO_TARGETS,
@@ -56,7 +56,7 @@ const queryAlerts = tool(
     service: z.string().optional().describe('Filter to a single service, e.g. oms-api.'),
   },
   async ({ status, service }) => {
-    let rows = alertStore.list();
+    let rows = await alertStore.list();
     if (status && status !== 'any') rows = rows.filter((a) => a.status === status);
     if (service) rows = rows.filter((a) => a.service === service);
     if (rows.length === 0) return text('No alerts matched that filter.');

@@ -15,8 +15,8 @@ import { config, hasAnthropicKey, hasGithubToken } from './config.ts';
 import { loadFleet, readAgentFile, validateAgentFile, writeAgentFile } from './agents/fleet.ts';
 import { fleetSummary } from './orchestrator/prompts.ts';
 import {
-  agentRuns, alerts, approvals, artifacts, events, inboundEvents, missions,
-} from './db.ts';
+  agentRuns, alerts, approvals, artifacts, events, inboundEvents, initDatabase, missions,
+} from './db/index.ts';
 import {
   dispatchEvent, newDeliveryId, normalizeWebhook, pollGitHub, verifySignature,
 } from './events/github.ts';
@@ -28,9 +28,11 @@ import {
 import { pruneWorkspaces, reconcileOrphanedMissions, resetIncident, seedAlerts } from './seed.ts';
 import { TEMPLATES } from './templates.ts';
 
-seedAlerts();
-const orphaned = reconcileOrphanedMissions();
-const pruned = pruneWorkspaces();
+// Open the database and create the schema before anything touches it.
+const driver = await initDatabase();
+await seedAlerts();
+const orphaned = await reconcileOrphanedMissions();
+const pruned = await pruneWorkspaces();
 
 const app = Fastify({ logger: { level: config.nodeEnv === 'production' ? 'warn' : 'info' } });
 await app.register(cors, { origin: true });
@@ -74,7 +76,7 @@ app.get('/api/config', async () => ({
 /* ----------------------------------------------------------------- fleet */
 
 app.get('/api/fleet', async () => {
-  const stats = new Map(agentRuns.stats().map((s) => [s.agentType, s] as const));
+  const stats = new Map((await agentRuns.stats()).map((s) => [s.agentType, s] as const));
   return fleetSummary().map((m) => ({
     ...m,
     runs: stats.get(m.id)?.runs ?? 0,
@@ -121,7 +123,7 @@ app.put('/api/agents/:id', async (req, reply) => {
 /* -------------------------------------------------------------- missions */
 
 app.get('/api/missions', async () =>
-  missions.list().map((m) => ({ ...m, live: isRunning(m.id) })),
+  (await missions.list()).map((m) => ({ ...m, live: isRunning(m.id) })),
 );
 
 app.get('/api/templates', async () => TEMPLATES);
@@ -137,27 +139,33 @@ app.post('/api/missions', async (req, reply) => {
   if (!parsed.success) {
     return reply.code(400).send({ error: 'Invalid body', details: parsed.error.issues });
   }
-  const mission = createMission(parsed.data);
+  const mission = await createMission(parsed.data);
   startMissionInBackground(mission.id);
   return reply.code(201).send(mission);
 });
 
 app.get('/api/missions/:id', async (req, reply) => {
   const { id } = req.params as { id: string };
-  const mission = missions.get(id);
+  const mission = await missions.get(id);
   if (!mission) return reply.code(404).send({ error: 'Mission not found' });
+  const [evts, agents, appr, arts] = await Promise.all([
+    events.listByMission(id),
+    agentRuns.listByMission(id),
+    approvals.listByMission(id),
+    artifacts.listByMission(id),
+  ]);
   return {
     mission: { ...mission, live: isRunning(id) },
-    events: events.listByMission(id),
-    agents: agentRuns.listByMission(id),
-    approvals: approvals.listByMission(id),
-    artifacts: artifacts.listByMission(id),
+    events: evts,
+    agents,
+    approvals: appr,
+    artifacts: arts,
   };
 });
 
 app.post('/api/missions/:id/cancel', async (req, reply) => {
   const { id } = req.params as { id: string };
-  if (!missions.get(id)) return reply.code(404).send({ error: 'Mission not found' });
+  if (!(await missions.get(id))) return reply.code(404).send({ error: 'Mission not found' });
   const cancelled = cancelMission(id);
   return { cancelled };
 });
@@ -178,12 +186,12 @@ app.post('/api/approvals/:id/decide', async (req, reply) => {
   if (!parsed.success) {
     return reply.code(400).send({ error: 'Invalid body', details: parsed.error.issues });
   }
-  const record = approvals.get(id);
+  const record = await approvals.get(id);
   if (!record) return reply.code(404).send({ error: 'Approval not found' });
   if (record.status !== 'pending') {
     return reply.code(409).send({ error: `Already ${record.status}` });
   }
-  const ok = resolveApproval(id, parsed.data.decision, parsed.data.decidedBy, parsed.data.reason);
+  const ok = await resolveApproval(id, parsed.data.decision, parsed.data.decidedBy, parsed.data.reason);
   if (!ok) return reply.code(409).send({ error: 'Approval is no longer waiting' });
   return approvals.get(id);
 });
@@ -216,7 +224,7 @@ app.post('/api/webhooks/github', async (req, reply) => {
     return reply.code(202).send({ accepted: true, acted: false, reason: normalized.skip });
   }
 
-  const result = dispatchEvent(
+  const result = await dispatchEvent(
     normalized,
     startMissionInBackground,
     (args) => createMission(args),
@@ -228,9 +236,12 @@ app.post('/api/webhooks/github', async (req, reply) => {
 /** Poll once on demand - useful to show the flow without a public URL. */
 app.post('/api/events/poll', async () => {
   const found = await pollGitHub();
-  const results = found.map((e) =>
-    dispatchEvent(e, startMissionInBackground, (args) => createMission(args), 'github_poll'),
-  );
+  const results = [];
+  for (const e of found) {
+    results.push(
+      await dispatchEvent(e, startMissionInBackground, (args) => createMission(args), 'github_poll'),
+    );
+  }
   return {
     checked: found.length,
     dispatched: results.filter((r) => r.status === 'dispatched').length,
@@ -244,7 +255,7 @@ app.get('/api/alerts', async () => alerts.list());
 
 app.post('/api/alerts/:id/trigger', async (req, reply) => {
   const { id } = req.params as { id: string };
-  const mission = missionFromAlert(id);
+  const mission = await missionFromAlert(id);
   if (!mission) return reply.code(404).send({ error: 'Alert not found' });
   startMissionInBackground(mission.id);
   return reply.code(201).send(mission);
@@ -323,7 +334,7 @@ if (hasGithubToken() && config.github.pollSeconds > 0) {
     try {
       const found = await pollGitHub();
       for (const e of found) {
-        dispatchEvent(e, startMissionInBackground, (args) => createMission(args), 'github_poll');
+        await dispatchEvent(e, startMissionInBackground, (args) => createMission(args), 'github_poll');
       }
     } catch (err) {
       app.log.warn({ err }, 'github poll failed');
@@ -337,6 +348,7 @@ const banner = [
   ``,
   `  ${config.productName} API listening on http://localhost:${config.port}`,
   `  Fleet: ${loadFleet().length} agents   Repo: ${config.github.owner}/${config.github.repo}`,
+  `  Store: ${driver.describe()}`,
   `  Anthropic key: ${hasAnthropicKey() ? 'configured' : 'MISSING - missions will not run'}`,
   ...(orphaned ? [`  Closed out ${orphaned} mission(s) orphaned by the last restart`] : []),
   ...(pruned ? [`  Pruned ${pruned} old mission workspace(s)`] : []),

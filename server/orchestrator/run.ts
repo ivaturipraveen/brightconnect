@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { nanoid } from 'nanoid';
 import { config, hasAnthropicKey } from '../config.ts';
 import { agentDefinitions, loadFleet } from '../agents/fleet.ts';
-import { agentRuns, alerts, approvals, artifacts, missions } from '../db.ts';
+import { agentRuns, alerts, approvals, artifacts, missions } from '../db/index.ts';
 import { bus } from '../bus.ts';
 import { createGithubServer } from '../tools/github.ts';
 import { changeMgmtServer, telemetryServer } from '../tools/telemetry.ts';
@@ -123,8 +123,8 @@ export interface StartMissionArgs {
   sourceRef?: string | null;
 }
 
-export function createMission(args: StartMissionArgs): Mission {
-  const mission = missions.create({
+export async function createMission(args: StartMissionArgs): Promise<Mission> {
+  const mission = await missions.create({
     id: nanoid(10),
     kind: args.kind,
     title: args.title,
@@ -150,14 +150,14 @@ export function createMission(args: StartMissionArgs): Mission {
  * generally fire this without awaiting and watch the event stream instead.
  */
 export async function runMission(missionId: string): Promise<void> {
-  const mission = missions.get(missionId);
+  const mission = await missions.get(missionId);
   if (!mission) throw new Error(`No mission ${missionId}`);
 
   if (!hasAnthropicKey()) {
     const message =
       'ANTHROPIC_API_KEY is not configured, so the agent fleet cannot run. ' +
       'Set it in .env and restart the API.';
-    missions.finish(missionId, { status: 'failed', error: message });
+    await missions.finish(missionId, { status: 'failed', error: message });
     bus.emitEvent({ missionId, type: 'error', actor: 'system', text: message });
     bus.publish({ channel: 'mission', payload: { missionId, status: 'failed' } });
     return;
@@ -172,7 +172,7 @@ export async function runMission(missionId: string): Promise<void> {
   const abort = new AbortController();
   running.set(missionId, abort);
   registerMissionAbort(missionId, abort);
-  missions.setStatus(missionId, 'running');
+  await missions.setStatus(missionId, 'running');
   bus.publish({ channel: 'mission', payload: { missionId, status: 'running' } });
   bus.emitEvent({
     missionId,
@@ -297,7 +297,7 @@ export async function runMission(missionId: string): Promise<void> {
     }
 
     const status = finalResult ? 'succeeded' : 'failed';
-    missions.finish(missionId, {
+    await missions.finish(missionId, {
       status,
       summary: finalResult || null,
       costUsd,
@@ -307,7 +307,7 @@ export async function runMission(missionId: string): Promise<void> {
       durationMs: Date.now() - started,
       sessionId,
     });
-    agentRuns.failAllRunning(missionId);
+    await agentRuns.failAllRunning(missionId);
     bus.emitEvent({
       missionId,
       type: 'mission.finished',
@@ -319,7 +319,7 @@ export async function runMission(missionId: string): Promise<void> {
   } catch (err) {
     const aborted = abort.signal.aborted;
     const message = err instanceof Error ? err.message : String(err);
-    missions.finish(missionId, {
+    await missions.finish(missionId, {
       status: aborted ? 'cancelled' : 'failed',
       error: aborted ? 'Cancelled by operator' : message,
       costUsd,
@@ -329,7 +329,7 @@ export async function runMission(missionId: string): Promise<void> {
       durationMs: Date.now() - started,
       sessionId,
     });
-    agentRuns.failAllRunning(missionId);
+    await agentRuns.failAllRunning(missionId);
     bus.emitEvent({
       missionId,
       type: aborted ? 'mission.finished' : 'error',
@@ -352,7 +352,7 @@ export async function runMission(missionId: string): Promise<void> {
       case 'system': {
         if ('session_id' in message && message.session_id) {
           sessionId = message.session_id;
-          missions.setSession(missionId, sessionId);
+          void missions.setSession(missionId, sessionId);
         }
         return;
       }
@@ -416,7 +416,7 @@ export async function runMission(missionId: string): Promise<void> {
       const agentType = String(input.subagent_type ?? 'unknown');
       const member = fleetSnapshot.get(agentType);
       agentByToolUse.set(toolUseId, agentType);
-      agentRuns.start({
+      void agentRuns.start({
         id: nanoid(10),
         missionId,
         agentType,
@@ -452,7 +452,7 @@ export async function runMission(missionId: string): Promise<void> {
 
     if (agentType) {
       const failed = Boolean(block.is_error);
-      agentRuns.finishByToolUseId(toolUseId, failed ? 'failed' : 'succeeded', raw.slice(0, 20_000));
+      void agentRuns.finishByToolUseId(toolUseId, failed ? 'failed' : 'succeeded', raw.slice(0, 20_000));
       const member = fleetSnapshot.get(agentType);
       bus.emitEvent({
         missionId,
@@ -503,8 +503,8 @@ export function startMissionInBackground(missionId: string) {
 }
 
 /** Turn a firing alert into an incident mission. */
-export function missionFromAlert(alertId: string): Mission | null {
-  const alert = alerts.get(alertId);
+export async function missionFromAlert(alertId: string): Promise<Mission | null> {
+  const alert = await alerts.get(alertId);
   if (!alert) return null;
   const summary =
     `Alert: ${alert.id} - ${alert.title}\n` +
@@ -513,7 +513,7 @@ export function missionFromAlert(alertId: string): Mission | null {
     `Resource: ${alert.resource}\n` +
     `Metric: ${alert.metric} observed ${alert.value} against threshold ${alert.threshold}\n` +
     `Fired at: ${alert.firedAt}\n\n${alert.description}`;
-  alerts.setStatus(alertId, 'acknowledged');
+  await alerts.setStatus(alertId, 'acknowledged');
   return createMission({
     kind: 'incident',
     title: alert.title,

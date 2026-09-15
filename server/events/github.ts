@@ -18,7 +18,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Octokit } from '@octokit/rest';
 import { nanoid } from 'nanoid';
 import { config, hasGithubToken } from '../config.ts';
-import { inboundEvents, missions } from '../db.ts';
+import { inboundEvents, missions } from '../db/index.ts';
 import { bus } from '../bus.ts';
 import type { MissionKind } from '../types.ts';
 
@@ -182,7 +182,7 @@ export interface DispatchResult {
  * Record an event and start work on it, unless we have seen it before or a
  * mission for the same reference is already running.
  */
-export function dispatchEvent(
+export async function dispatchEvent(
   event: NormalizedEvent,
   start: (missionId: string) => void,
   create: (args: {
@@ -191,12 +191,12 @@ export function dispatchEvent(
     input: string;
     trigger: 'github_webhook' | 'github_poll';
     sourceRef: string;
-  }) => { id: string },
+  }) => Promise<{ id: string }>,
   trigger: 'github_webhook' | 'github_poll',
-): DispatchResult {
-  if (inboundEvents.seen(event.id)) return { status: 'duplicate' };
+): Promise<DispatchResult> {
+  if (await inboundEvents.seen(event.id)) return { status: 'duplicate' };
 
-  inboundEvents.record({
+  await inboundEvents.record({
     id: event.id,
     source: 'github',
     kind: event.kind,
@@ -206,20 +206,20 @@ export function dispatchEvent(
     status: 'received',
   });
 
-  const active = missions.activeForSource(event.sourceRef);
+  const active = await missions.activeForSource(event.sourceRef);
   if (active) {
-    inboundEvents.setStatus(event.id, 'ignored', `Mission ${active.id} is already working on ${event.sourceRef}`);
+    await inboundEvents.setStatus(event.id, 'ignored', `Mission ${active.id} is already working on ${event.sourceRef}`);
     return { status: 'ignored', note: `already being worked by mission ${active.id}` };
   }
 
-  const mission = create({
+  const mission = await create({
     kind: event.missionKind,
     title: event.title,
     input: event.body,
     trigger,
     sourceRef: event.sourceRef,
   });
-  inboundEvents.attachMission(event.id, mission.id);
+  await inboundEvents.attachMission(event.id, mission.id);
   bus.publish({ channel: 'alert', payload: { inbound: true, sourceRef: event.sourceRef } });
   start(mission.id);
   return { status: 'dispatched', missionId: mission.id };

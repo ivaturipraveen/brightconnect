@@ -18,6 +18,19 @@ export const config = {
   productName: env('PRODUCT_NAME', 'Brightworks'),
   customerName: env('CUSTOMER_NAME', 'Exol'),
 
+  database: {
+    /**
+     * Postgres connection string. When unset the platform falls back to a local
+     * SQLite file, so it still starts without a database to talk to.
+     */
+    url: process.env.DATABASE_URL ?? '',
+    /**
+     * Render hands out an internal hostname that only resolves inside its own
+     * network. If one is supplied, this region completes it.
+     */
+    renderRegion: env('RENDER_REGION', 'oregon'),
+  },
+
   anthropic: {
     apiKey: process.env.ANTHROPIC_API_KEY ?? '',
     /** The agent that plans the mission and delegates to the fleet. */

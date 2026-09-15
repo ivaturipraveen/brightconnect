@@ -17,7 +17,7 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { nanoid } from 'nanoid';
 import { config, hasGithubToken } from '../config.ts';
-import { artifacts } from '../db.ts';
+import { artifacts } from '../db/index.ts';
 import { bus } from '../bus.ts';
 import { requestApproval } from '../orchestrator/approvals.ts';
 
@@ -96,13 +96,13 @@ async function resolveBody(
 }
 
 export function createGithubServer(ctx: GithubToolContext) {
-  const record = (
+  const record = async (
     kind: 'pull_request' | 'issue',
     title: string,
     url: string | null,
     body: string,
   ) => {
-    const artifact = artifacts.create({
+    const artifact = await artifacts.create({
       id: nanoid(10),
       missionId: ctx.missionId,
       kind,
@@ -163,7 +163,7 @@ export function createGithubServer(ctx: GithubToolContext) {
     async ({ state, label }) => {
       const gh = octokit();
       if (!gh) {
-        const local = artifacts.listAll(50).filter((a) => a.kind === 'issue');
+        const local = (await artifacts.listAll(50)).filter((a) => a.kind === 'issue');
         return text(
           local.length
             ? `Locally recorded tickets (unpublished):\n` +
@@ -206,7 +206,7 @@ export function createGithubServer(ctx: GithubToolContext) {
       const signed = `${resolved.text}\n\n---\n_Filed by ${config.productName} - agent \`${ctx.actor}\` - mission \`${ctx.missionId}\`_`;
 
       if (!gh) {
-        const a = record('issue', title, null, signed);
+        const a = await record('issue', title, null, signed);
         return text(
           `Ticket recorded locally (unpublished - no GitHub credentials).\n` +
             `  id=${a.id} title=${title}\n  labels=${(labels ?? []).join(', ') || 'none'}\n` +
@@ -216,7 +216,7 @@ export function createGithubServer(ctx: GithubToolContext) {
       }
 
       const res = await gh.issues.create({ ...repoRef, title, body: signed, labels });
-      record('issue', title, res.data.html_url, signed);
+      await record('issue', title, res.data.html_url, signed);
       return text(
         `Created issue #${res.data.number}: ${res.data.html_url}` +
           (resolved.note ? `\n${resolved.note}` : ''),
@@ -282,7 +282,7 @@ export function createGithubServer(ctx: GithubToolContext) {
       const gh = octokit();
 
       if (!gh) {
-        const a = record('pull_request', title, null, signed);
+        const a = await record('pull_request', title, null, signed);
         return text(
           `Pull request prepared locally (unpublished - no GitHub credentials).\n` +
             `  branch=${branch}\n  files=${files.length}\n` +
@@ -318,7 +318,7 @@ export function createGithubServer(ctx: GithubToolContext) {
       await gh.git.createRef({ ...repoRef, ref: `refs/heads/${branch}`, sha: commit.data.sha });
 
       const pr = await gh.pulls.create({ ...repoRef, title, body: signed, head: branch, base });
-      record('pull_request', title, pr.data.html_url, signed);
+      await record('pull_request', title, pr.data.html_url, signed);
 
       return text(
         `Opened pull request #${pr.data.number}: ${pr.data.html_url}\n` +
