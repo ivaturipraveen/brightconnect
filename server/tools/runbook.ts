@@ -122,12 +122,18 @@ const executeAction = tool(
     actionId: z.enum(ACTION_IDS).describe('Which action to run. Must be one of the listed ids exactly.'),
     target: z.string().describe('Resource to act on, e.g. oms-api.'),
     reason: z.string().describe('Why this action resolves the incident. Shown to the human approver.'),
-    params: z.record(z.string(), z.union([z.string(), z.number()])).optional()
-      .describe('Action parameters, e.g. { replicas: 8 } or { DB_MAX_POOL_SIZE: "50" }.'),
+    // A JSON string rather than z.record: a record schema does not convert to
+    // valid JSON schema here, and the failure is silent and total - the tool is
+    // dropped, and with it every other tool on the same MCP server, so the
+    // orchestrator was told "No such tool available: mcp__runbook__execute_action"
+    // for a server reporting itself connected.
+    params: z.string().optional()
+      .describe('Action parameters as a JSON object string, e.g. {"replicas": 8} or {"DB_MAX_POOL_SIZE": "50"}.'),
   },
   async ({ actionId, target, reason, params }) => {
-    if (typeof params === 'string') {
-      try { params = JSON.parse(params); } catch { params = undefined; }
+    let parsedParams: Record<string, unknown> = {};
+    if (typeof params === 'string' && params.trim()) {
+      try { parsedParams = JSON.parse(params); } catch { /* fall through with none */ }
     }
     const spec = actionById(actionId);
     if (!spec) {
@@ -144,7 +150,7 @@ const executeAction = tool(
         actor: ctx.actor,
         toolName: 'mcp__runbook__execute_action',
         summary: `${spec.title} on ${target} (impact: ${spec.impact})`,
-        input: { actionId, target, reason, params },
+        input: { actionId, target, reason, params: parsedParams },
       });
       if (!decision.approved) {
         return text(
@@ -168,12 +174,12 @@ const executeAction = tool(
         break;
       case 'update_config':
         result =
-          `Patched configuration on ${target}: ${JSON.stringify(params ?? {})}\n` +
+          `Patched configuration on ${target}: ${JSON.stringify(parsedParams)}\n` +
           `  deployment.apps/${target} patched; rolling restart triggered.\n` +
           `  Rollout complete: 6 of 6 replicas ready.`;
         break;
       case 'scale_replicas':
-        result = `Scaled ${target} to ${params?.replicas ?? 'the requested count'} replicas.`;
+        result = `Scaled ${target} to ${parsedParams.replicas ?? 'the requested count'} replicas.`;
         break;
       case 'restart_pods':
         result = `Rolling restart of ${target} complete; 6 of 6 pods restarted within the disruption budget.`;
@@ -190,7 +196,7 @@ const executeAction = tool(
         result = `Executed ${actionId} on ${target}.`;
     }
 
-    incidentState.record({ actionId, target, params: params ?? {}, appliedAt, result });
+    incidentState.record({ actionId, target, params: parsedParams, appliedAt, result });
 
     return text(
       `${result}\n\nReason recorded: ${reason}\n` +

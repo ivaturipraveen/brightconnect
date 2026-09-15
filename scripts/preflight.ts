@@ -12,7 +12,9 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { Octokit } from '@octokit/rest';
 import { config, hasAnthropicKey, hasGithubToken } from '../server/config.ts';
-import { telemetryServer } from '../server/tools/telemetry.ts';
+import { changeMgmtServer, telemetryServer } from '../server/tools/telemetry.ts';
+import { createRunbookServer } from '../server/tools/runbook.ts';
+import { createGithubServer } from '../server/tools/github.ts';
 
 const pass = (m: string) => console.log(`  \x1b[32m✓\x1b[0m ${m}`);
 const fail = (m: string) => console.log(`  \x1b[31m✗\x1b[0m ${m}`);
@@ -32,7 +34,57 @@ if (!hasAnthropicKey()) {
 }
 pass(`key present (${config.anthropic.apiKey.slice(0, 12)}…)`);
 
-/* -------------------------------------- 2. subagent + MCP tool inheritance */
+/* ------------------------------------------------- 2. every tool registers */
+
+/**
+ * One tool with a schema the harness cannot convert takes down its whole MCP
+ * server, silently: the server still reports itself connected, and every tool
+ * on it disappears. That cost a debugging session - the orchestrator was told
+ * "No such tool available: mcp__runbook__execute_action" while the runbook
+ * server looked healthy - so it is now checked before every demo.
+ */
+console.log('\nTool registration');
+
+const EXPECTED: Record<string, string[]> = {
+  telemetry: ['query_alerts', 'query_logs', 'query_metrics', 'describe_resource'],
+  changemgmt: ['recent_changes', 'describe_change'],
+  runbook: ['list_actions', 'execute_action'],
+  github: ['get_repo_context', 'list_issues', 'create_issue', 'comment_issue', 'open_pull_request'],
+};
+
+let registered: string[] = [];
+for await (const message of query({
+  prompt: 'Reply with the single word: ready',
+  options: {
+    model: config.anthropic.agentModel,
+    mcpServers: {
+      telemetry: telemetryServer,
+      changemgmt: changeMgmtServer,
+      runbook: createRunbookServer({ missionId: 'preflight', actor: 'preflight' }),
+      github: createGithubServer({ missionId: 'preflight', workspaceDir: '/tmp', actor: 'preflight' }),
+    },
+    settingSources: [],
+    permissionMode: 'bypassPermissions',
+    maxTurns: 1,
+    maxBudgetUsd: 0.5,
+    env: { ...process.env, ANTHROPIC_API_KEY: config.anthropic.apiKey },
+  },
+})) {
+  if (message.type === 'system' && Array.isArray((message as any).tools)) {
+    registered = (message as any).tools as string[];
+  }
+}
+
+for (const [server, tools] of Object.entries(EXPECTED)) {
+  const missing = tools.filter((t) => !registered.includes(`mcp__${server}__${t}`));
+  if (missing.length === 0) pass(`${server}: all ${tools.length} tools registered`);
+  else {
+    fail(`${server}: ${missing.length}/${tools.length} MISSING - ${missing.join(', ')}`);
+    failures++;
+  }
+}
+
+/* -------------------------------------- 3. subagent + MCP tool inheritance */
 
 console.log('\nAgent fleet');
 info('spawning a probe subagent that must call an MCP tool…');
@@ -95,7 +147,7 @@ try {
   failures++;
 }
 
-/* -------------------------------------------------------------- 3. GitHub */
+/* -------------------------------------------------------------- 4. GitHub */
 
 console.log('\nGitHub');
 if (!hasGithubToken()) {
