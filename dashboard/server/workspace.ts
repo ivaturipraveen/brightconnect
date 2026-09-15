@@ -50,6 +50,9 @@ export const PRODUCT_AREAS = [
 /** Never copied: generated, huge, or secret. */
 const EXCLUDE = new Set(['node_modules', 'dist', '.git', '.env', '.env.local', 'coverage']);
 
+/** Where the product sits inside the repository, e.g. "product". */
+const PRODUCT_PREFIX = relative(config.paths.repoRoot, config.paths.productRoot);
+
 async function copyArea(source: string, destination: string): Promise<number> {
   if (!existsSync(source)) return 0;
   let copied = 0;
@@ -166,6 +169,13 @@ export async function provisionWorkspace(
  * Files that differ from the product as it stands - what the pull request
  * should contain. Comparing against the original avoids a PR carrying the
  * entire codebase as "changes".
+ *
+ * Paths come back relative to the repository, not the workspace. The workspace
+ * mirrors product/, so a file the fleet edits is `frontend/src/App.tsx` there
+ * and `product/frontend/src/App.tsx` in the repository. Returning the workspace
+ * path put every pull request in a `frontend/` tree at the repository root:
+ * four files that all read as new, none of them the file that was edited, and a
+ * merge would have forked the product in two.
  */
 export async function changedFiles(
   workspaceDir: string,
@@ -183,8 +193,11 @@ export async function changedFiles(
         continue;
       }
       const rel = relative(workspaceDir, full);
-      // The brief and the map are ours, not part of the product.
-      if (rel === 'MISSION.md' || rel === 'PROJECT.md') continue;
+      // Markdown at the workspace root is the platform's, not the product's:
+      // the brief, the project map, and whatever the orchestrator wrote to pass
+      // as a ticket or pull request body. The product's own files live under
+      // backend/ and frontend/.
+      if (!rel.includes('/') && rel.endsWith('.md')) continue;
       const info = await stat(full);
       if (info.size > 512 * 1024) continue;
 
@@ -196,7 +209,7 @@ export async function changedFiles(
       } catch {
         original = null; // a new file
       }
-      if (original !== content) out.push({ path: rel, content });
+      if (original !== content) out.push({ path: join(PRODUCT_PREFIX, rel), content });
     }
   }
 

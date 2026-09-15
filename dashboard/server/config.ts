@@ -68,6 +68,12 @@ export const config = {
     workspaces: fileURLToPath(new URL('../../workspaces/', import.meta.url)),
     /** The codebase the fleet maintains: holds backend/ and frontend/. */
     productRoot: fileURLToPath(new URL('../../product/', import.meta.url)),
+    /**
+     * The repository root. A mission workspace mirrors productRoot, so a file
+     * is `frontend/src/App.tsx` there and `product/frontend/src/App.tsx` in the
+     * repository - and a pull request has to use the second one.
+     */
+    repoRoot: fileURLToPath(new URL('../../', import.meta.url)),
   },
 } as const;
 
