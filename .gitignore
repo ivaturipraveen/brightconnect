@@ -2,9 +2,9 @@
 node_modules/
 dist/
 
-# Runtime state (the database lives in Postgres; this is the local fallback)
-data/*.db
-data/*.db-*
+# Runtime state: the database (Postgres in production, SQLite locally), the
+# documents the console generates, and the per-mission working copies.
+data/
 workspaces/
 
 # Secrets
