@@ -15,6 +15,8 @@ import { config, hasAnthropicKey, hasGithubToken } from '../dashboard/server/con
 import { changeMgmtServer, telemetryServer } from '../dashboard/server/tools/telemetry.ts';
 import { createRunbookServer } from '../dashboard/server/tools/runbook.ts';
 import { createGithubServer } from '../dashboard/server/tools/github.ts';
+import { initDatabase } from '../dashboard/server/db/index.ts';
+import { seedAlerts } from '../dashboard/server/seed.ts';
 
 const pass = (m: string) => console.log(`  \x1b[32m✓\x1b[0m ${m}`);
 const fail = (m: string) => console.log(`  \x1b[31m✗\x1b[0m ${m}`);
@@ -34,7 +36,25 @@ if (!hasAnthropicKey()) {
 }
 pass(`key present (${config.anthropic.apiKey.slice(0, 12)}…)`);
 
-/* ------------------------------------------------- 2. every tool registers */
+/* ------------------------------------------------------------- 2. database */
+
+/**
+ * The telemetry tools read the alerts table, so the database has to be open
+ * before any of this means anything. Without it the probe below "passes" while
+ * every tool call fails - which is exactly the false green a pre-demo check
+ * exists to prevent.
+ */
+console.log('\nDatabase');
+try {
+  const driver = await initDatabase();
+  await seedAlerts();
+  pass(`connected: ${driver.describe()}`);
+} catch (err) {
+  fail(`cannot open the database: ${err instanceof Error ? err.message : err}`);
+  failures++;
+}
+
+/* ------------------------------------------------- 3. every tool registers */
 
 /**
  * One tool with a schema the harness cannot convert takes down its whole MCP
@@ -84,7 +104,7 @@ for (const [server, tools] of Object.entries(EXPECTED)) {
   }
 }
 
-/* -------------------------------------- 3. subagent + MCP tool inheritance */
+/* -------------------------------------- 4. subagent + MCP tool inheritance */
 
 console.log('\nAgent fleet');
 info('spawning a probe subagent that must call an MCP tool…');
@@ -138,8 +158,12 @@ try {
   if (sawMcpCall) pass('subagent reached its MCP tool (tool scoping works)');
   else { fail('no MCP tool call observed - subagents may not inherit mcpServers'); failures++; }
 
-  if (result.includes('3')) pass(`probe read the environment correctly: "${result.trim().slice(0, 60)}"`);
-  else info(`probe replied: "${result.trim().slice(0, 80)}"`);
+  if (/\b3\b/.test(result)) {
+    pass(`probe read the environment correctly: "${result.trim().slice(0, 60)}"`);
+  } else {
+    fail(`probe could not read the environment: "${result.trim().slice(0, 90)}"`);
+    failures++;
+  }
 
   info(`probe cost $${cost.toFixed(4)}`);
 } catch (err) {
@@ -147,7 +171,7 @@ try {
   failures++;
 }
 
-/* -------------------------------------------------------------- 4. GitHub */
+/* -------------------------------------------------------------- 5. GitHub */
 
 console.log('\nGitHub');
 if (!hasGithubToken()) {
