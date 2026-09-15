@@ -46,8 +46,18 @@ systemctl is-active brightconnect-chat      >/dev/null && echo "    chat api : a
 REMOTE
 
 echo "==> Verifying"
+# Poll rather than check once: the dashboard opens a Postgres connection before
+# it listens, so a single immediate check reports a false failure.
 "${SSH[@]}" "$TARGET" '
-  curl -sf http://localhost:8787/api/health >/dev/null && echo "    dashboard API healthy" || echo "    dashboard API NOT healthy"
-  curl -sf http://localhost:8080/api/health >/dev/null && echo "    chat API healthy"      || echo "    chat API NOT healthy"
+  for svc in "dashboard:8787" "chat:8080"; do
+    name="${svc%%:*}"; port="${svc##*:}"
+    for i in $(seq 1 20); do
+      if curl -sf "http://localhost:$port/api/health" >/dev/null 2>&1; then
+        echo "    $name API healthy"; break
+      fi
+      [ "$i" = 20 ] && echo "    $name API NOT healthy after 20s"
+      sleep 1
+    done
+  done
 '
 echo "==> Done. Dashboard: http://${TARGET#*@}/    Product: http://${TARGET#*@}/app/"
