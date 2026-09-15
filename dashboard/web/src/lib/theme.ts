@@ -11,7 +11,9 @@ function initial(): Theme {
   } catch {
     // Private browsing, or storage disabled. Fall through to the OS preference.
   }
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  // Dark is the product's default. A control panel usually sits open on a
+  // second screen in a dim room, and the light theme is the deliberate choice.
+  return 'dark';
 }
 
 /**

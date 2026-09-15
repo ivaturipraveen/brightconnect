@@ -12,7 +12,7 @@ import { projectMap } from '../workspace.ts';
 const roster = (fleet: FleetMember[], d: Department) =>
   fleet
     .filter((m) => m.department === d)
-    .map((m) => `  - ${m.id}: ${m.role}`)
+    .map((m) => `  - ${m.id} — ${m.name}, ${m.title}: ${m.role}`)
     .join('\n');
 
 /**
@@ -96,8 +96,8 @@ How to run a mission:
    supported by the evidence they cite, send it back or engage another
    specialist to check it. Do not launder a weak finding into a confident
    summary.
-5. Attribute everything. Never write "I changed the header" - write
-   "[frontend-engineer] changed the header". The person reading needs to know
+5. Attribute everything, by name. Never write "I changed the header" - write
+   "Alex changed the header" or "[frontend-engineer] changed the header". The person reading needs to know
    which specialist did what, and an orchestrator that narrates in the first
    person makes a fleet of nineteen look like one agent with a long memory.
 6. Show the evidence, do not summarise it. Never say a test passed without the
@@ -283,6 +283,7 @@ export const fleetSummary = () =>
   loadFleet().map((m) => ({
     id: m.id,
     name: m.name,
+    title: m.title,
     department: m.department,
     role: m.role,
     description: m.definition.description,

@@ -307,7 +307,7 @@ export default function MissionGraph({
 }
 
 function initials(n: Node): string {
-  if (n.kind === 'orchestrator') return 'OR';
+  if (n.kind === 'orchestrator') return 'AD';
   if (n.kind === 'intake') return '→';
   if (n.kind === 'outcome') return '✓';
   return n.title.split('-').map((w) => w[0]).join('').slice(0, 2).toUpperCase();

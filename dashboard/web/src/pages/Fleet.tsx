@@ -87,6 +87,7 @@ export default function Fleet() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[14px] font-semibold text-ink-100">{m.name}</span>
+                        <span className="text-[12px] text-ink-300">{m.title}</span>
                         <span className="font-mono text-[11px] text-ink-500">{m.id}</span>
                         {m.runs > 0 && (
                           <Badge tone={m.succeeded === m.runs ? 'ok' : 'warn'}>

@@ -108,7 +108,8 @@ app.get('/api/overview', async () => {
     // deciding invisible, which is the part people most want to see.
     orchestrator: {
       id: 'orchestrator',
-      name: 'Orchestrator',
+      name: 'Ada',
+      title: 'Orchestrator',
       role: 'Reads the request, decides what it is, and engages the specialists it needs',
       model: config.anthropic.orchestratorModel,
       status: active.length > 0 ? 'working' : 'idle',
@@ -125,6 +126,7 @@ app.get('/api/overview', async () => {
     fleet: loadFleet().map((m) => ({
       id: m.id,
       name: m.name,
+      title: m.title,
       department: m.department,
       role: m.role,
       model: m.model,
@@ -209,6 +211,7 @@ app.get('/api/analytics', async () => {
     agents: fleet.map((m) => ({
       id: m.id,
       name: m.name,
+      title: m.title,
       department: m.department,
       model: m.model,
       runs: runsBy.get(m.id)?.runs ?? 0,

@@ -22,7 +22,10 @@ export type Department = 'sdlc' | 'sre' | 'platform';
 export interface FleetMember {
   /** Stable key, the filename stem, and the subagent name used to delegate. */
   id: string;
+  /** What we call them: a first name, so a fleet of nineteen reads as people. */
   name: string;
+  /** The job: Frontend Engineer, Incident Commander, and so on. */
+  title: string;
   department: Department;
   /** One-line pitch shown on the fleet dashboard. */
   role: string;
@@ -75,6 +78,7 @@ function toolManifest(tools: string[]): string {
 interface Frontmatter {
   name?: string;
   displayName?: string;
+  title?: string;
   department?: Department;
   role?: string;
   description?: string;
@@ -124,6 +128,7 @@ function toMember(id: string, raw: string): FleetMember {
   return {
     id,
     name: fm.displayName ?? id,
+    title: fm.title ?? fm.role ?? id,
     department: fm.department ?? 'platform',
     role: fm.role ?? '',
     body,

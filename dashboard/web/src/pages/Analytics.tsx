@@ -124,8 +124,9 @@ export default function Analytics() {
               {d.agents.map((a) => (
                 <tr key={a.id} className="border-b border-ink-800 last:border-0">
                   <td className="px-4 py-2">
-                    <span className="font-mono text-[12px] text-ink-100">{a.id}</span>
-                    <span className="ml-2 text-[11px] text-ink-500">{a.department}</span>
+                    <span className="text-[12.5px] font-medium text-ink-100">{a.name}</span>
+                    <span className="ml-2 text-[11px] text-ink-400">{a.title}</span>
+                    <span className="ml-2 font-mono text-[10px] text-ink-500">{a.id}</span>
                   </td>
                   <td className="px-3 py-2 font-mono text-[11px] text-ink-400">
                     {a.model.replace('claude-', '')}

@@ -108,6 +108,7 @@ export interface Alert {
 export interface FleetMember {
   id: string;
   name: string;
+  title: string;
   department: 'sdlc' | 'sre' | 'platform';
   role: string;
   description: string;
@@ -137,6 +138,7 @@ export interface Overview {
   orchestrator: {
     id: string;
     name: string;
+    title: string;
     role: string;
     model: string;
     status: 'working' | 'idle';
@@ -153,6 +155,7 @@ export interface Overview {
   fleet: Array<{
     id: string;
     name: string;
+    title: string;
     department: 'sdlc' | 'sre' | 'platform';
     role: string;
     model: string;
@@ -174,7 +177,7 @@ export interface Analytics {
   byKind: Array<{ kind: string; missions: number; spendUsd: number; tokens: number }>;
   byTrigger: Array<{ trigger: string; missions: number }>;
   agents: Array<{
-    id: string; name: string; department: string; model: string;
+    id: string; name: string; title: string; department: string; model: string;
     runs: number; succeeded: number;
   }>;
   recent: Array<{

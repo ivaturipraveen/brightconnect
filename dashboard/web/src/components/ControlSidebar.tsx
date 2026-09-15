@@ -51,12 +51,15 @@ export default function ControlSidebar({ overview }: { overview: Overview | null
             }`}
             aria-hidden
           >
-            OR
+            AD
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <span className="text-[12px] font-semibold text-ink-100">
-                {overview?.orchestrator.name ?? 'Orchestrator'}
+                {overview?.orchestrator.name ?? 'Ada'}
+              </span>
+              <span className="text-[10px] text-ink-400">
+                {overview?.orchestrator.title ?? 'Orchestrator'}
               </span>
               <span className={`text-[9px] ${overview?.orchestrator.status === 'working' ? 'text-think-400' : 'text-ink-600'}`}>
                 {overview?.orchestrator.status ?? 'idle'}
@@ -91,7 +94,8 @@ export default function ControlSidebar({ overview }: { overview: Overview | null
                     <Avatar name={m.name} working={m.status === 'working'} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
-                        <span className="truncate text-[12px] font-medium text-ink-100">{m.name}</span>
+                        <span className="truncate text-[12px] font-semibold text-ink-100">{m.name}</span>
+                        <span className="truncate text-[10px] text-ink-400">{m.title}</span>
                         <span className="ml-auto flex shrink-0 items-center gap-1 text-[9px] uppercase tracking-wide">
                           <span
                             className={`h-1.5 w-1.5 rounded-full ${
