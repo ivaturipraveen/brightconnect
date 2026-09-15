@@ -321,17 +321,10 @@ export async function runMission(missionId: string): Promise<void> {
     sandbox,
     abortController: abort,
     maxBudgetUsd: config.maxMissionCostUsd,
-    /**
-     * Medium, not high.
-     *
-     * The orchestrator delegates and reads results; it is not the one solving
-     * the problem. On a 31-turn mission the extra reasoning per turn is paid
-     * thirty-one times before any specialist starts work, and the decisions it
-     * makes - which specialist, in what order - were not close calls. The
-     * specialists keep their own effort setting, which is where the thinking
-     * that matters happens.
-     */
-    effort: 'medium',
+    // High, deliberately. Lowering it shaved turn latency but the planning is
+    // what decides who runs and in what order, and that is not the place to buy
+    // speed - the concurrency rules in the brief are.
+    effort: 'high',
     mcpServers: {
       telemetry: telemetryServer,
       changemgmt: changeMgmtServer,
