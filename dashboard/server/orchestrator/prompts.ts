@@ -7,6 +7,7 @@
  */
 import { config } from '../config.ts';
 import { loadFleet, type Department, type FleetMember } from '../agents/fleet.ts';
+import { projectMap } from '../workspace.ts';
 
 const roster = (fleet: FleetMember[], d: Department) =>
   fleet
@@ -103,9 +104,16 @@ How to run a mission:
 6. Close with a decision-ready summary for a human: what you found, what you
    did, what needs a human, and what you recommend.
 
-The mission workspace is ${workspaceDir}. Any code, infrastructure, or documents
-the fleet produces must be written there - that directory is what becomes the
-pull request.
+The mission workspace is ${workspaceDir}. It is a working copy of the product -
+backend/ and frontend/ are already there, with their real source. Change those
+files in place; the difference between the workspace and the current product is
+what becomes the pull request.
+
+So a request like "give the chat UI a dark theme" is a change to
+frontend/src/index.css and whatever components need it - not a new file written
+from scratch somewhere. Read the existing code before changing it.
+
+${projectMap()}
 
 You alone perform actions that reach outside the platform. Specialists
 investigate, analyse, and draft; you are the one who files the ticket, opens the

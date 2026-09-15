@@ -16,7 +16,7 @@ export const config = {
 
   /** Display name shown throughout the UI. One line to rebrand. */
   productName: env('PRODUCT_NAME', 'Brightworks'),
-  customerName: env('CUSTOMER_NAME', 'Exol'),
+  customerName: env('CUSTOMER_NAME', 'Northwind'),
 
   database: {
     /**
@@ -65,8 +65,10 @@ export const config = {
     // fileURLToPath, not URL.pathname: pathname percent-encodes, so a repo
     // checked out under a path containing a space silently writes to a
     // directory literally named "New%20POC".
-    data: fileURLToPath(new URL('../data/', import.meta.url)),
-    workspaces: fileURLToPath(new URL('../workspaces/', import.meta.url)),
+    data: fileURLToPath(new URL('../../data/', import.meta.url)),
+    workspaces: fileURLToPath(new URL('../../workspaces/', import.meta.url)),
+    /** The codebase the fleet maintains: holds backend/ and frontend/. */
+    productRoot: fileURLToPath(new URL('../../product/', import.meta.url)),
   },
 } as const;
 

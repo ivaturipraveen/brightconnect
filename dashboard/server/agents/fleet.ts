@@ -32,7 +32,12 @@ export interface FleetMember {
   definition: AgentDefinition;
 }
 
-export const AGENTS_DIR = fileURLToPath(new URL('../../.claude/agents/', import.meta.url));
+/**
+ * The fleet lives with the code it works on, not with the dashboard that
+ * watches it - so `product/` is a self-contained Claude Code project and the
+ * same agents load whether they are driven from here or from the CLI.
+ */
+export const AGENTS_DIR = fileURLToPath(new URL('../../../product/.claude/agents/', import.meta.url));
 
 /**
  * House rules every fleet member inherits. Kept in code rather than repeated in

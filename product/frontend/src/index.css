@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #ffffff;
+  --color-surface-sunken: #f6f7f9;
+  --color-line: #e4e7ec;
+  --color-text: #17191c;
+  --color-text-muted: #6b7280;
+  --color-accent: #2563eb;
+}
+
+/* The chat reads as a document, so it follows the reader's theme. */
+@media (prefers-color-scheme: dark) {
+  @theme {
+    --color-surface: #101216;
+    --color-surface-sunken: #171a1f;
+    --color-line: #262b33;
+    --color-text: #e8eaed;
+    --color-text-muted: #9aa3af;
+    --color-accent: #60a5fa;
+  }
+}
+
+html, body, #root { height: 100%; }
+body {
+  background: var(--color-surface);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes blink { 50% { opacity: 0; } }
+.caret::after {
+  content: '▍';
+  animation: blink 1s step-end infinite;
+  margin-left: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caret::after { animation: none; }
+}

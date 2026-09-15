@@ -3,20 +3,24 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Brightworks - an AI engineering workforce. Agent fleet orchestration for AI-native SDLC and incident response.",
+  "description": "Brightworks dashboard, and the chat product its agent fleet maintains.",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "dev": "concurrently -n server,web -c cyan,magenta \"npm:start\" \"npm:dev:web\"",
-    "dev:watch": "concurrently -n server,web -c cyan,magenta \"npm:dev:server\" \"npm:dev:web\"",
-    "dev:server": "tsx watch --env-file-if-exists=.env server/index.ts",
-    "dev:web": "vite",
-    "start": "tsx --env-file-if-exists=.env server/index.ts",
-    "build": "vite build",
+    "dev": "concurrently -n dash-api,dash-ui,chat-api,chat-ui -c cyan,blue,magenta,green \"npm:dev:dashboard\" \"npm:dev:dashboard-web\" \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:dashboard": "tsx --env-file-if-exists=.env dashboard/server/index.ts",
+    "dev:dashboard-web": "vite --config dashboard/vite.config.ts",
+    "dev:backend": "npm run start --prefix product/backend",
+    "dev:frontend": "npm run dev --prefix product/frontend",
+    "dev:watch": "concurrently -n dash-api,dash-ui -c cyan,blue \"tsx watch --env-file-if-exists=.env dashboard/server/index.ts\" \"npm:dev:dashboard-web\"",
+    "build": "vite build --config dashboard/vite.config.ts && npm run build --prefix product/frontend",
+    "start": "tsx --env-file-if-exists=.env dashboard/server/index.ts",
     "preflight": "tsx --env-file-if-exists=.env scripts/preflight.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.web.json",
-    "clean": "rm -rf dist workspaces data/*.db data/*.db-shm data/*.db-wal"
+    "install:all": "npm install && npm install --prefix product/backend && npm install --prefix product/frontend",
+    "typecheck": "tsc --noEmit -p dashboard/tsconfig.json && tsc --noEmit -p dashboard/tsconfig.web.json && npm run typecheck --prefix product/backend && npm run typecheck --prefix product/frontend",
+    "test": "npm test --prefix product/backend",
+    "clean": "rm -rf dashboard/dist product/frontend/dist workspaces data/*.db data/*.db-shm data/*.db-wal"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.269",

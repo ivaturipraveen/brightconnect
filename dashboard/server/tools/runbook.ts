@@ -209,7 +209,7 @@ return createSdkMcpServer({
   name: 'runbook',
   version: '1.0.0',
   instructions:
-    'Remediation actions for the Exol OMS platform. High-impact actions pause for human approval before they run.',
+    'Remediation actions for the OMS platform. High-impact actions pause for human approval before they run.',
   tools: [listActions, executeAction],
 });
 }

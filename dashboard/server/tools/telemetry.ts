@@ -155,7 +155,7 @@ function recoveryLogs(): LogEntry[] {
     (a) => a.actionId === 'rollback_deployment' || a.actionId === 'update_config',
   );
   if (!fix) return [];
-  const api = 'projects/exol-oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-api';
+  const api = 'projects/oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-api';
   const t = (offsetSec: number) =>
     new Date(new Date(fix.appliedAt).getTime() + offsetSec * 1000).toISOString();
   return [
@@ -208,7 +208,7 @@ function projectRecovery(r: ResourceDescriptor): ResourceDescriptor {
     const patch = incidentState.applied.find((a) => a.actionId === 'update_config');
     cfg.env = { ...cfg.env, DB_MAX_POOL_SIZE: String(patch?.params?.DB_MAX_POOL_SIZE ?? 50) };
   }
-  if (cfg.image) cfg.image = 'gcr.io/exol-oms-prod/oms-api:2.14.2';
+  if (cfg.image) cfg.image = 'gcr.io/oms-prod/oms-api:2.14.2';
   if (cfg.healthyBackends !== undefined) cfg.healthyBackends = 6;
   return { ...r, state: 'HEALTHY', config: cfg };
 }
@@ -217,7 +217,7 @@ export const telemetryServer = createSdkMcpServer({
   name: 'telemetry',
   version: '1.0.0',
   instructions:
-    'Read-only observability for the Exol OMS platform: alerts, logs, metric time series, and resource configuration.',
+    'Read-only observability for the OMS platform: alerts, logs, metric time series, and resource configuration.',
   tools: [queryAlerts, queryLogs, queryMetrics, describeResource],
 });
 
@@ -278,6 +278,6 @@ export const changeMgmtServer = createSdkMcpServer({
   name: 'changemgmt',
   version: '1.0.0',
   instructions:
-    'Change management records for the Exol platform: deployments, config changes, infrastructure applies, feature flags.',
+    'Change management records for the OMS platform: deployments, config changes, infrastructure applies, feature flags.',
   tools: [recentChanges, describeChange],
 });

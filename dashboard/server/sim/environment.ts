@@ -1,5 +1,5 @@
 /**
- * A simulated GCP-shaped environment for the Exol Order Management System.
+ * A simulated GCP-shaped environment for the Order Management System.
  *
  * Why simulated: we have no access to the customer's GCP project, and a live
  * demo that depends on a real cloud account is a demo that can fail on stage.
@@ -69,12 +69,12 @@ export const INCIDENT_WINDOW = {
 
 export const RESOURCES: ResourceDescriptor[] = [
   {
-    name: 'projects/exol-oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-api',
+    name: 'projects/oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-api',
     type: 'k8s_deployment',
     state: 'DEGRADED',
     config: {
       replicas: { desired: 6, ready: 2, unavailable: 4 },
-      image: 'gcr.io/exol-oms-prod/oms-api:2.14.3',
+      image: 'gcr.io/oms-prod/oms-api:2.14.3',
       resources: { requests: { cpu: '500m', memory: '1Gi' }, limits: { cpu: '2', memory: '2Gi' } },
       readinessProbe: { path: '/healthz', periodSeconds: 10, failureThreshold: 3, timeoutSeconds: 1 },
       env: {
@@ -87,7 +87,7 @@ export const RESOURCES: ResourceDescriptor[] = [
     },
   },
   {
-    name: 'projects/exol-oms-prod/instances/oms-primary',
+    name: 'projects/oms-prod/instances/oms-primary',
     type: 'cloudsql_instance',
     state: 'RUNNABLE',
     config: {
@@ -102,17 +102,17 @@ export const RESOURCES: ResourceDescriptor[] = [
     },
   },
   {
-    name: 'projects/exol-oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-fulfilment',
+    name: 'projects/oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-fulfilment',
     type: 'k8s_deployment',
     state: 'HEALTHY',
     config: {
       replicas: { desired: 4, ready: 4, unavailable: 0 },
-      image: 'gcr.io/exol-oms-prod/oms-fulfilment:1.9.0',
+      image: 'gcr.io/oms-prod/oms-fulfilment:1.9.0',
       env: { DB_MAX_POOL_SIZE: '40' },
     },
   },
   {
-    name: 'projects/exol-oms-prod/global/backendServices/oms-api-lb',
+    name: 'projects/oms-prod/global/backendServices/oms-api-lb',
     type: 'load_balancer',
     state: 'DEGRADED',
     config: {
@@ -128,7 +128,7 @@ export const RESOURCES: ResourceDescriptor[] = [
 
 function buildLogs(): LogEntry[] {
   const logs: LogEntry[] = [];
-  const api = 'projects/exol-oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-api';
+  const api = 'projects/oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-api';
 
   // Quiet baseline before anything goes wrong.
   for (let m = -30; m < -4; m += 4) {
@@ -211,7 +211,7 @@ function buildLogs(): LogEntry[] {
       timestamp: at(m),
       severity: 'INFO',
       resource:
-        'projects/exol-oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-fulfilment',
+        'projects/oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-fulfilment',
       service: 'oms-fulfilment',
       message: `Processed fulfilment batch; p99=96ms; pool_in_use=14/40; no errors`,
     });
@@ -222,7 +222,7 @@ function buildLogs(): LogEntry[] {
     logs.push({
       timestamp: at(m),
       severity: 'INFO',
-      resource: 'projects/exol-oms-prod/instances/oms-primary',
+      resource: 'projects/oms-prod/instances/oms-primary',
       service: 'cloudsql',
       message: `Instance healthy; connections=61/800; cpu=22%; replication_lag=0.4s`,
     });
@@ -263,7 +263,7 @@ export const CHANGES: ChangeRecord[] = [
     id: 'CHG-4471',
     type: 'deployment',
     title: 'oms-api 2.14.3 - tune database connection pool',
-    author: 'm.okafor@exol.com',
+    author: 'm.okafor@northwind.example',
     service: 'oms-api',
     timestamp: at(-4),
     summary:
@@ -273,7 +273,7 @@ export const CHANGES: ChangeRecord[] = [
       from_version: '2.14.2',
       to_version: '2.14.3',
       changed_env: { DB_MAX_POOL_SIZE: { from: '50', to: '5' } },
-      approved_by: 'r.castellanos@exol.com',
+      approved_by: 'r.castellanos@northwind.example',
       change_window: 'standard',
       load_tested: false,
     },
@@ -284,7 +284,7 @@ export const CHANGES: ChangeRecord[] = [
     id: 'CHG-4468',
     type: 'infrastructure',
     title: 'Enable point-in-time recovery on oms-primary',
-    author: 'platform-bot@exol.com',
+    author: 'platform-bot@northwind.example',
     service: 'cloudsql',
     timestamp: at(-180),
     summary: 'Terraform apply enabling PITR and extending backup retention to 7 days.',
@@ -295,7 +295,7 @@ export const CHANGES: ChangeRecord[] = [
     id: 'CHG-4465',
     type: 'feature_flag',
     title: 'Enable express_checkout for 10% of traffic',
-    author: 'j.patel@exol.com',
+    author: 'j.patel@northwind.example',
     service: 'oms-api',
     timestamp: at(-420),
     summary: 'Gradual rollout of express checkout flow.',
@@ -305,7 +305,7 @@ export const CHANGES: ChangeRecord[] = [
     id: 'CHG-4460',
     type: 'config',
     title: 'Raise HPA max replicas for oms-fulfilment 8 -> 12',
-    author: 'm.okafor@exol.com',
+    author: 'm.okafor@northwind.example',
     service: 'oms-fulfilment',
     timestamp: at(-1440),
     summary: 'Capacity increase ahead of seasonal volume.',
@@ -325,7 +325,7 @@ export const SEED_ALERTS = [
     description:
       'Order submission endpoint returning 503 at 64% of requests. Error budget for the hour is exhausted. Customer-facing order placement is failing.',
     resource:
-      'projects/exol-oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-api',
+      'projects/oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-api',
     metric: 'error_rate_5xx',
     value: '64%',
     threshold: '1%',
@@ -339,7 +339,7 @@ export const SEED_ALERTS = [
     title: 'OMS API replica availability degraded',
     description: 'Only 2 of 6 desired replicas are passing readiness checks.',
     resource:
-      'projects/exol-oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-api',
+      'projects/oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-api',
     metric: 'replicas_ready',
     value: '2',
     threshold: '>= 4',
@@ -353,7 +353,7 @@ export const SEED_ALERTS = [
     title: 'OMS API p99 latency elevated',
     description: 'p99 request latency has exceeded 2s, up from a 115ms baseline.',
     resource:
-      'projects/exol-oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-api',
+      'projects/oms-prod/locations/us-central1/clusters/oms-prod/workloads/oms-api',
     metric: 'request_latency_p99',
     value: '2100ms',
     threshold: '500ms',

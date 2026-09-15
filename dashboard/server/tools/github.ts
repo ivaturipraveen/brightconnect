@@ -13,8 +13,9 @@
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { Octokit } from '@octokit/rest';
 import { z } from 'zod';
-import { readdir, readFile, stat } from 'node:fs/promises';
-import { join, relative, resolve } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { changedFiles } from '../workspace.ts';
+import { join, resolve } from 'node:path';
 import { nanoid } from 'nanoid';
 import { config, hasGithubToken } from '../config.ts';
 import { artifacts } from '../db/index.ts';
@@ -35,35 +36,6 @@ const octokit = () =>
   hasGithubToken() ? new Octokit({ auth: config.github.token }) : null;
 
 const repoRef = { owner: config.github.owner, repo: config.github.repo };
-
-/** Collect every file the agents wrote, as repo-relative paths. */
-async function collectWorkspaceFiles(
-  dir: string,
-): Promise<Array<{ path: string; content: string }>> {
-  const out: Array<{ path: string; content: string }> = [];
-  async function walk(current: string) {
-    let entries;
-    try {
-      entries = await readdir(current, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const e of entries) {
-      if (e.name === '.git' || e.name === 'node_modules') continue;
-      const full = join(current, e.name);
-      if (e.isDirectory()) {
-        await walk(full);
-      } else {
-        const info = await stat(full);
-        // Skip anything large enough to be a build artifact rather than source.
-        if (info.size > 512 * 1024) continue;
-        out.push({ path: relative(dir, full), content: await readFile(full, 'utf8') });
-      }
-    }
-  }
-  await walk(dir);
-  return out;
-}
 
 /**
  * Long markdown does not survive the tool-call round trip reliably - during
@@ -269,11 +241,14 @@ export function createGithubServer(ctx: GithubToolContext) {
         );
       }
 
-      const files = await collectWorkspaceFiles(ctx.workspaceDir);
+      // Only files that actually differ from the product as it stands - a PR
+      // carrying the whole codebase as "changes" is unreviewable.
+      const files = await changedFiles(ctx.workspaceDir);
       if (files.length === 0) {
         return text(
-          'The mission workspace is empty - there is nothing to put in a pull request. ' +
-            'Make sure the implementation agents wrote their files into the workspace directory before opening a PR.',
+          'Nothing in the workspace differs from the current product, so there is no ' +
+            'pull request to open. Make the changes in the workspace copy of backend/ or ' +
+            'frontend/ first, then try again.',
         );
       }
 

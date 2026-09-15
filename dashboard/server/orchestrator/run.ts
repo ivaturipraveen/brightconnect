@@ -9,7 +9,7 @@
  */
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { Options, PermissionResult, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { provisionWorkspace } from '../workspace.ts';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { nanoid } from 'nanoid';
@@ -163,11 +163,12 @@ export async function runMission(missionId: string): Promise<void> {
     return;
   }
 
-  const workspaceDir = join(config.paths.workspaces, missionId);
-  await mkdir(workspaceDir, { recursive: true });
-  // Seed the workspace so agents have the mission brief on disk as well as in
-  // context - useful when a specialist needs to re-read the original ask.
-  await writeFile(join(workspaceDir, 'MISSION.md'), `# ${mission.title}\n\n${mission.input}\n`, 'utf8');
+  // The workspace is a working copy of the product, not an empty directory:
+  // agents change real code, and the diff becomes the pull request.
+  const { workspaceDir, filesCopied } = await provisionWorkspace(missionId, {
+    title: mission.title,
+    input: mission.input,
+  });
 
   const abort = new AbortController();
   running.set(missionId, abort);
@@ -178,7 +179,10 @@ export async function runMission(missionId: string): Promise<void> {
     missionId,
     type: 'mission.started',
     actor: 'orchestrator',
-    text: `Orchestrator engaged. Workspace ${workspaceDir}`,
+    text:
+      `Orchestrator engaged. Workspace provisioned with ${filesCopied} product file(s) ` +
+      `from backend/ and frontend/.`,
+    data: { workspaceDir, filesCopied },
   });
 
   // Snapshot the fleet once per mission: definitions are read from disk, and a

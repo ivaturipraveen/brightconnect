@@ -20,7 +20,7 @@ export const TEMPLATES: Template[] = [
     input: `# PRD: Order Status Webhooks
 
 ## Background
-Exol's larger retail partners currently poll \`GET /v1/orders/{id}\` every 30 seconds to
+Northwind's larger retail partners currently poll \`GET /v1/orders/{id}\` every 30 seconds to
 track fulfilment state. At current partner counts this is roughly 40% of all OMS API
 traffic and it contributes materially to the load on the order service. Partners have
 also asked repeatedly for faster notification of state changes.
