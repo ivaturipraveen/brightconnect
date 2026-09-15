@@ -40,9 +40,8 @@ export const config = {
 
   github: {
     token: process.env.GITHUB_TOKEN ?? '',
-    /** Set in the environment; no account or repository is baked into the source. */
-    owner: env('GITHUB_OWNER', ''),
-    repo: env('GITHUB_REPO', ''),
+    owner: env('GITHUB_OWNER', 'ivaturipraveen'),
+    repo: env('GITHUB_REPO', 'brightconnect'),
     /** Shared secret for webhook signatures. Unset means local development. */
     webhookSecret: process.env.GITHUB_WEBHOOK_SECRET ?? '',
     /**
@@ -50,7 +49,7 @@ export const config = {
      * default: pointed at a real repository, acting on every new issue would
      * start a mission for each one. Set it empty to act on everything.
      */
-    triggerLabel: env('GITHUB_TRIGGER_LABEL', 'agent-fleet'),
+    triggerLabel: env('GITHUB_TRIGGER_LABEL', 'brightconnect'),
     /** Seconds between polls. 0 disables polling. */
     pollSeconds: Number(env('GITHUB_POLL_SECONDS', '45')),
   },

@@ -126,7 +126,7 @@ export default function App() {
 function Logo() {
   return (
     <img
-      src="/logo.webp"
+      src="/brightcone-logo.webp"
       alt=""
       className="h-8 w-8 shrink-0 object-contain"
       aria-hidden

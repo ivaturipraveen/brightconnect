@@ -66,7 +66,7 @@ export default function App() {
     <div className="flex h-full flex-col">
       <header className="border-b border-line">
         <div className="mx-auto flex max-w-3xl items-center gap-3 px-5 py-3">
-          <img src="./logo.webp" alt="" className="h-7 w-7 object-contain" aria-hidden />
+          <img src="./brightcone-logo.webp" alt="" className="h-7 w-7 object-contain" aria-hidden />
           <div className="flex-1">
             <h1 className="text-[14px] font-semibold tracking-tight">Assistant</h1>
           </div>
@@ -168,7 +168,7 @@ function EmptyState({ onPick, disabled }: { onPick: (q: string) => void; disable
   ];
   return (
     <div className="flex min-h-[55vh] flex-col items-center justify-center text-center">
-      <img src="./logo.webp" alt="" className="mb-5 h-12 w-12 object-contain opacity-90" aria-hidden />
+      <img src="./brightcone-logo.webp" alt="" className="mb-5 h-12 w-12 object-contain opacity-90" aria-hidden />
       <h2 className="text-[22px] font-semibold tracking-tight">What would you like to know?</h2>
       <p className="mt-1.5 text-[14px] text-text-faint">Ask a question and the answer streams back as it is written.</p>
       {!disabled && (
