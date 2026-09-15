@@ -8,7 +8,10 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
-import { existsSync } from 'node:fs';
+import multipart from '@fastify/multipart';
+import { createReadStream, createWriteStream, existsSync, mkdirSync } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { config, hasAnthropicKey, hasGithubToken } from './config.ts';
@@ -27,6 +30,8 @@ import {
 } from './orchestrator/run.ts';
 import { pruneWorkspaces, reconcileOrphanedMissions, resetIncident, seedAlerts } from './seed.ts';
 import { TEMPLATES } from './templates.ts';
+import { runConsoleTurn, type ConsoleTurn } from './console/agent.ts';
+import { DOCUMENTS_DIR } from './console/documents.ts';
 
 // Open the database and create the schema before anything touches it.
 const driver = await initDatabase();
@@ -36,6 +41,7 @@ const pruned = await pruneWorkspaces();
 
 const app = Fastify({ logger: { level: config.nodeEnv === 'production' ? 'warn' : 'info' } });
 await app.register(cors, { origin: true });
+await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024, files: 5 } });
 
 // Webhook signatures are computed over the exact bytes GitHub sent, so the raw
 // body has to survive JSON parsing.
@@ -195,6 +201,106 @@ app.post('/api/approvals/:id/decide', async (req, reply) => {
   if (!ok) return reply.code(409).send({ error: 'Approval is no longer waiting' });
   return approvals.get(id);
 });
+
+/* --------------------------------------------------------------- console */
+
+/**
+ * The console: someone types a task or a question and the platform works out
+ * which it is. Streams the reply, and tells the client when a mission starts or
+ * a document is ready so it can link to them.
+ */
+const consoleBody = z.object({
+  messages: z.array(z.object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string().min(1),
+  })).min(1),
+  attachments: z.array(z.object({
+    name: z.string(),
+    path: z.string(),
+    type: z.string(),
+  })).optional(),
+});
+
+app.post('/api/console/chat', async (req, reply) => {
+  const parsed = consoleBody.safeParse(req.body);
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'Invalid body', details: parsed.error.issues });
+  }
+  if (!hasAnthropicKey()) {
+    return reply.code(503).send({ error: 'ANTHROPIC_API_KEY is not configured.' });
+  }
+
+  reply.raw.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+
+  const scratch = join(config.paths.data, 'console');
+  mkdirSync(scratch, { recursive: true });
+
+  try {
+    for await (const event of runConsoleTurn(
+      parsed.data.messages as ConsoleTurn[],
+      {
+        attachments: parsed.data.attachments ?? [],
+        launch: async ({ kind, title, input }) => {
+          const mission = await createMission({ kind, title, input, trigger: 'manual' });
+          startMissionInBackground(mission.id);
+          return mission.id;
+        },
+      },
+      scratch,
+    )) {
+      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+    }
+  } catch (err) {
+    reply.raw.write(
+      `data: ${JSON.stringify({ type: 'error', text: err instanceof Error ? err.message : String(err) })}\n\n`,
+    );
+  } finally {
+    reply.raw.end();
+  }
+});
+
+/** Attach a file to the console conversation. */
+app.post('/api/console/upload', async (req, reply) => {
+  const file = await req.file();
+  if (!file) return reply.code(400).send({ error: 'No file provided' });
+
+  const uploads = join(config.paths.data, 'uploads');
+  mkdirSync(uploads, { recursive: true });
+  // Keep the original name for the human, prefix for uniqueness on disk.
+  const safe = file.filename.replace(/[^\w.\- ]+/g, '_').slice(0, 80);
+  const stored = join(uploads, `${Date.now().toString(36)}-${safe}`);
+  await pipeline(file.file, createWriteStream(stored));
+
+  return {
+    name: file.filename,
+    path: stored,
+    type: file.mimetype || 'application/octet-stream',
+  };
+});
+
+/** Serve a generated document. */
+app.get('/api/console/documents/:file', async (req, reply) => {
+  const { file } = req.params as { file: string };
+  // Never let a path escape the documents directory.
+  if (file.includes('/') || file.includes('..')) {
+    return reply.code(400).send({ error: 'Invalid document name' });
+  }
+  const path = join(DOCUMENTS_DIR, file);
+  if (!existsSync(path)) return reply.code(404).send({ error: 'No such document' });
+  return reply.type(contentTypeFor(file)).send(createReadStream(path));
+});
+
+const contentTypeFor = (file: string): string => {
+  if (file.endsWith('.pdf')) return 'application/pdf';
+  if (file.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  if (file.endsWith('.pptx')) return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+  return 'application/octet-stream';
+};
 
 /* ------------------------------------------------------- inbound events */
 

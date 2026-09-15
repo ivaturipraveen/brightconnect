@@ -1,0 +1,341 @@
+import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { api, type Attachment, type ConsoleEvent, type Mission } from '../lib/api.ts';
+import { useActivityStream } from '../lib/stream.ts';
+import { Badge, Button, Panel, StatusDot, fmtCost, relTime } from '../components/ui.tsx';
+
+/**
+ * The console: type a task or a question.
+ *
+ * Questions are answered from platform state; work becomes a mission. The
+ * distinction is the agent's to make, so the input is deliberately one plain
+ * box rather than a mode switch the person has to get right.
+ */
+
+interface Turn {
+  role: 'user' | 'assistant';
+  content: string;
+  /** What the agent did while answering, for the activity line. */
+  tools?: string[];
+  missionIds?: string[];
+  documents?: Array<{ name: string; url: string }>;
+  cost?: number;
+}
+
+export default function Console() {
+  const [turns, setTurns] = useState<Turn[]>([]);
+  const [input, setInput] = useState('');
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [missions, setMissions] = useState<Mission[]>([]);
+  const endRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const loadMissions = () => void api.missions().then(setMissions).catch(() => {});
+  useEffect(loadMissions, []);
+  useActivityStream({ onMission: loadMissions });
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [turns, busy]);
+
+  const attach = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setError(null);
+    for (const file of Array.from(files).slice(0, 5)) {
+      try {
+        const uploaded = await api.uploadAttachment(file);
+        setAttachments((prev) => [...prev, uploaded]);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    }
+  };
+
+  const send = async () => {
+    const text = input.trim();
+    if (!text || busy) return;
+
+    const history: Turn[] = [...turns, { role: 'user', content: text }];
+    setTurns([...history, { role: 'assistant', content: '', tools: [] }]);
+    setInput('');
+    setError(null);
+    setBusy(true);
+
+    const patch = (fn: (t: Turn) => Turn) =>
+      setTurns((prev) => {
+        const copy = [...prev];
+        const last = copy[copy.length - 1];
+        if (last?.role === 'assistant') copy[copy.length - 1] = fn(last);
+        return copy;
+      });
+
+    try {
+      const res = await fetch('/api/console/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: history.map((t) => ({ role: t.role, content: t.content })),
+          attachments,
+        }),
+      });
+      if (!res.ok || !res.body) throw new Error(`Request failed (${res.status})`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split('\n\n');
+        buffer = frames.pop() ?? '';
+
+        for (const frame of frames) {
+          const line = frame.split('\n').find((l) => l.startsWith('data: '));
+          if (!line) continue;
+          const e = JSON.parse(line.slice(6)) as ConsoleEvent;
+
+          if (e.type === 'text' && e.text) {
+            patch((t) => ({ ...t, content: t.content + (t.content ? '\n\n' : '') + e.text }));
+          } else if (e.type === 'tool' && e.text) {
+            patch((t) => ({ ...t, tools: [...(t.tools ?? []), e.text!] }));
+          } else if (e.type === 'mission' && e.missionId) {
+            patch((t) => ({ ...t, missionIds: [...(t.missionIds ?? []), e.missionId!] }));
+            loadMissions();
+          } else if (e.type === 'document' && e.document) {
+            patch((t) => ({ ...t, documents: [...(t.documents ?? []), e.document!] }));
+          } else if (e.type === 'done') {
+            patch((t) => ({ ...t, cost: e.cost }));
+          } else if (e.type === 'error') {
+            setError(e.text ?? 'Something went wrong');
+          }
+        }
+      }
+      // Attachments belong to the message that used them.
+      setAttachments([]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setTurns((prev) => (prev[prev.length - 1]?.content === '' ? prev.slice(0, -1) : prev));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const active = missions.filter((m) =>
+    ['queued', 'running', 'awaiting_approval'].includes(m.status),
+  );
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <Panel
+        title="Console"
+        dense
+        actions={<span className="text-[11px] text-ink-500">ask a question, or describe work to be done</span>}
+      >
+        <div className="flex h-[calc(100vh-230px)] flex-col">
+          <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+            {turns.length === 0 ? (
+              <Welcome onPick={setInput} />
+            ) : (
+              turns.map((t, i) => <TurnView key={i} turn={t} streaming={busy && i === turns.length - 1} />)
+            )}
+            {error && (
+              <div className="rounded-md border border-crit-500/30 bg-crit-500/10 px-3 py-2 text-[13px] text-crit-400">
+                {error}
+              </div>
+            )}
+            <div ref={endRef} />
+          </div>
+
+          <div className="border-t border-ink-700 p-3">
+            {attachments.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {attachments.map((a) => (
+                  <span
+                    key={a.path}
+                    className="inline-flex items-center gap-1.5 rounded border border-ink-600 bg-ink-850 px-2 py-1 text-[11px] text-ink-300"
+                  >
+                    {a.name}
+                    <button
+                      onClick={() => setAttachments((prev) => prev.filter((x) => x.path !== a.path))}
+                      className="text-ink-500 hover:text-crit-400"
+                      aria-label={`Remove ${a.name}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-end gap-2">
+              <input
+                ref={fileRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => void attach(e.target.files)}
+              />
+              <button
+                onClick={() => fileRef.current?.click()}
+                title="Attach a file"
+                className="rounded-md border border-ink-600 px-2.5 py-2 text-ink-400 hover:bg-ink-800 hover:text-ink-200"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21.4 11.1 12.3 20.2a5.6 5.6 0 0 1-7.9-7.9l9.2-9.1a3.7 3.7 0 1 1 5.3 5.3l-9.2 9.1a1.9 1.9 0 0 1-2.6-2.6l8.5-8.4" strokeLinecap="round" />
+                </svg>
+              </button>
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    void send();
+                  }
+                }}
+                rows={1}
+                placeholder="Add a settings page… / What's running? / Summarise the last incident as a PDF"
+                className="max-h-40 min-h-[40px] flex-1 resize-y rounded-md border border-ink-600 bg-ink-850 px-3 py-2 text-[13px] text-ink-100 placeholder:text-ink-500 focus:border-signal-500 focus:outline-none"
+              />
+              <Button variant="primary" onClick={() => void send()} disabled={busy || !input.trim()}>
+                {busy ? 'Working…' : 'Send'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Panel>
+
+      <div className="space-y-4">
+        <Panel title={`Running now (${active.length})`} dense>
+          {active.length === 0 ? (
+            <div className="px-4 py-5 text-center text-[12px] text-ink-400">Nothing running.</div>
+          ) : (
+            <ul className="divide-y divide-ink-800">
+              {active.map((m) => (
+                <li key={m.id} className="px-3 py-2">
+                  <Link to={`/missions/${m.id}`} className="group flex items-center gap-2">
+                    <StatusDot status={m.status} />
+                    <span className="truncate text-[12px] text-ink-100 group-hover:text-signal-300">
+                      {m.title}
+                    </span>
+                  </Link>
+                  <div className="mt-0.5 pl-4 text-[10px] text-ink-500">
+                    {m.status.replace('_', ' ')} · {relTime(m.createdAt)}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+
+        <Panel title="What you can ask" dense>
+          <ul className="space-y-2 px-3 py-3 text-[12px] leading-relaxed text-ink-400">
+            <li><span className="text-ink-200">Build something.</span> "Add a dark theme", "Build a settings page" — becomes a mission with review gates.</li>
+            <li><span className="text-ink-200">Ask about state.</span> "What's running?", "What did that mission find?" — answered straight away.</li>
+            <li><span className="text-ink-200">Produce a document.</span> "Summarise this month as a deck" — PDF, Word or PowerPoint.</li>
+            <li><span className="text-ink-200">Attach a file.</span> A spec, a screenshot, a report — it is read before work starts.</li>
+          </ul>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function Welcome({ onPick }: { onPick: (s: string) => void }) {
+  const examples = [
+    'What is running right now?',
+    'Add a dark theme toggle to the chat UI',
+    'Summarise the last incident as a PDF',
+  ];
+  return (
+    <div className="grid h-full place-items-center text-center">
+      <div>
+        <p className="text-[15px] font-medium text-ink-100">What needs doing?</p>
+        <p className="mt-1 text-[13px] text-ink-400">
+          Describe a task and the fleet picks it up. Ask a question and it just answers.
+        </p>
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
+          {examples.map((e) => (
+            <button
+              key={e}
+              onClick={() => onPick(e)}
+              className="rounded-full border border-ink-600 bg-ink-850 px-3 py-1.5 text-[12px] text-ink-300 hover:border-signal-500/50 hover:text-ink-100"
+            >
+              {e}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TurnView({ turn, streaming }: { turn: Turn; streaming: boolean }) {
+  if (turn.role === 'user') {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[85%] rounded-lg bg-signal-500 px-3 py-2 text-[13px] text-white">
+          {turn.content}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {turn.tools && turn.tools.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {turn.tools.map((t, i) => (
+            <span key={i} className="rounded bg-ink-800 px-1.5 py-0.5 font-mono text-[10px] text-ink-400">
+              {t}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {turn.content && (
+        <div className="whitespace-pre-wrap rounded-lg border border-ink-700 bg-ink-850 px-3 py-2.5 text-[13px] leading-relaxed text-ink-200">
+          {turn.content}
+        </div>
+      )}
+      {!turn.content && streaming && (
+        <div className="rounded-lg border border-ink-700 bg-ink-850 px-3 py-2.5 text-[13px] text-ink-400">
+          Thinking…
+        </div>
+      )}
+
+      {turn.missionIds?.map((id) => (
+        <Link
+          key={id}
+          to={`/missions/${id}`}
+          className="flex items-center gap-2 rounded-lg border border-think-400/40 bg-think-400/10 px-3 py-2 text-[13px] hover:bg-think-400/15"
+        >
+          <Badge tone="think">mission started</Badge>
+          <span className="font-mono text-[11px] text-ink-300">{id}</span>
+          <span className="ml-auto text-[12px] text-signal-300">watch the flow →</span>
+        </Link>
+      ))}
+
+      {turn.documents?.map((d) => (
+        <a
+          key={d.url}
+          href={d.url}
+          download
+          className="flex items-center gap-2 rounded-lg border border-ok-500/40 bg-ok-500/10 px-3 py-2 text-[13px] hover:bg-ok-500/15"
+        >
+          <Badge tone="ok">document</Badge>
+          <span className="truncate text-ink-100">{d.name}</span>
+          <span className="ml-auto text-[12px] text-signal-300">download →</span>
+        </a>
+      ))}
+
+      {turn.cost !== undefined && turn.cost > 0 && (
+        <div className="text-[10px] text-ink-500">{fmtCost(turn.cost)}</div>
+      )}
+    </div>
+  );
+}

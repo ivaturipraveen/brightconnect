@@ -118,6 +118,21 @@ export interface FleetMember {
   succeeded: number;
 }
 
+export interface Attachment {
+  name: string;
+  path: string;
+  type: string;
+}
+
+/** One frame of a console reply. */
+export interface ConsoleEvent {
+  type: 'text' | 'tool' | 'mission' | 'document' | 'done' | 'error';
+  text?: string;
+  missionId?: string;
+  document?: { name: string; url: string };
+  cost?: number;
+}
+
 export interface AgentFile {
   id: string;
   content: string;
@@ -179,6 +194,14 @@ export const api = {
 
   inboundEvents: () => req<InboundEvent[]>('/events/inbound'),
   pollNow: () => req<{ checked: number; dispatched: number }>('/events/poll', { method: 'POST' }),
+
+  uploadAttachment: async (file: File): Promise<Attachment> => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/api/console/upload', { method: 'POST', body: form });
+    if (!res.ok) throw new Error(`Upload failed (${res.status})`);
+    return res.json() as Promise<Attachment>;
+  },
 
   agentFile: (id: string) => req<AgentFile>(`/agents/${id}`),
   validateAgent: (id: string, content: string) =>

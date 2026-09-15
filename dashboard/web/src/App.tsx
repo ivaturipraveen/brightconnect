@@ -3,6 +3,7 @@ import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { api, type AppConfig, type Approval } from './lib/api.ts';
 import { useActivityStream } from './lib/stream.ts';
 import { Badge } from './components/ui.tsx';
+import Console from './pages/Console.tsx';
 import MissionControl from './pages/MissionControl.tsx';
 import MissionDetail from './pages/MissionDetail.tsx';
 import Fleet from './pages/Fleet.tsx';
@@ -10,6 +11,7 @@ import Incidents from './pages/Incidents.tsx';
 import Governance from './pages/Governance.tsx';
 
 const NAV = [
+  { to: '/console', label: 'Console' },
   { to: '/missions', label: 'Mission Control' },
   { to: '/incidents', label: 'Incidents' },
   { to: '/fleet', label: 'Agent Fleet' },
@@ -90,13 +92,14 @@ export default function App() {
 
       <main className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-5 sm:px-6">
         <Routes>
-          <Route path="/" element={<Navigate to="/missions" replace />} />
+          <Route path="/" element={<Navigate to="/console" replace />} />
+          <Route path="/console" element={<Console />} />
           <Route path="/missions" element={<MissionControl />} />
           <Route path="/missions/:id" element={<MissionDetail />} />
           <Route path="/incidents" element={<Incidents />} />
           <Route path="/fleet" element={<Fleet />} />
           <Route path="/governance" element={<Governance />} />
-          <Route path="*" element={<Navigate to="/missions" replace />} />
+          <Route path="*" element={<Navigate to="/console" replace />} />
         </Routes>
       </main>
     </div>
