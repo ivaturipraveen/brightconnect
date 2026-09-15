@@ -67,9 +67,12 @@ export default function App() {
   return (
     <div className="mx-auto flex h-full max-w-3xl flex-col px-4">
       <header className="flex items-center justify-between border-b border-line py-3">
-        <div>
-          <h1 className="text-[15px] font-semibold">Assistant</h1>
-          <p className="text-[12px] text-text-muted">Ask a question.</p>
+        <div className="flex items-center gap-2.5">
+          <img src="/brightcone-logo.webp" alt="" className="h-8 w-8 object-contain" aria-hidden />
+          <div>
+            <h1 className="text-[15px] font-semibold">Assistant</h1>
+            <p className="text-[12px] text-text-muted">Ask a question.</p>
+          </div>
         </div>
         {messages.length > 0 && (
           <button

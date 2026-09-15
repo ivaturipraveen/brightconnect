@@ -9,7 +9,7 @@ User=brightconnect
 Group=brightconnect
 WorkingDirectory=/opt/brightconnect/product/backend
 EnvironmentFile=/opt/brightconnect/.env
-ExecStart=/usr/bin/npx tsx src/index.ts
+ExecStart=/opt/brightconnect/product/backend/node_modules/.bin/tsx src/index.ts
 
 Restart=always
 RestartSec=3

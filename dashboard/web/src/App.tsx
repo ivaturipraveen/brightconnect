@@ -108,12 +108,12 @@ export default function App() {
 
 function Logo() {
   return (
-    <div className="grid h-8 w-8 place-items-center rounded-md bg-gradient-to-br from-signal-500 to-think-400">
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden>
-        <path d="M12 3v6m0 6v6M3 12h6m6 0h6" stroke="white" strokeWidth="2" strokeLinecap="round" />
-        <circle cx="12" cy="12" r="2.5" fill="white" />
-      </svg>
-    </div>
+    <img
+      src="/brightcone-logo.webp"
+      alt=""
+      className="h-8 w-8 shrink-0 object-contain"
+      aria-hidden
+    />
   );
 }
 

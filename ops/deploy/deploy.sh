@@ -8,6 +8,12 @@ KEY="${2:-}"
 SSH=(ssh -o StrictHostKeyChecking=no)
 [[ -n "$KEY" ]] && SSH+=(-i "$KEY")
 
+# rsync parses -e with shell-like word splitting, so a key path containing a
+# space has to be quoted inside the string - "${SSH[*]}" alone silently breaks
+# it into separate arguments and rsync tries to connect to the second half.
+RSH="ssh -o StrictHostKeyChecking=no"
+[[ -n "$KEY" ]] && RSH="$RSH -i '$KEY'"
+
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 APP_DIR=/opt/brightconnect
 
@@ -16,7 +22,7 @@ echo "==> Building both consoles"
 
 echo "==> Syncing to $TARGET"
 rsync -az --delete \
-  -e "${SSH[*]}" \
+  -e "$RSH" \
   --exclude node_modules --exclude .git --exclude data --exclude workspaces \
   --exclude .env --exclude '*.log' \
   "$ROOT/" "$TARGET:/tmp/brightconnect-deploy/"

@@ -9,7 +9,7 @@ User=brightconnect
 Group=brightconnect
 WorkingDirectory=/opt/brightconnect
 EnvironmentFile=/opt/brightconnect/.env
-ExecStart=/usr/bin/npx tsx dashboard/server/index.ts
+ExecStart=/opt/brightconnect/node_modules/.bin/tsx dashboard/server/index.ts
 
 # Keep it up: restart on any exit, backing off so a crash loop cannot spin the
 # CPU during a demo.
