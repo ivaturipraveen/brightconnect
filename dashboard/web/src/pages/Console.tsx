@@ -26,14 +26,18 @@ interface Turn {
 }
 
 /**
- * The conversation, kept across navigation.
+ * The transcript, kept until somebody clears it.
  *
  * The console holds its history in component state, and React unmounts the page
  * the moment you visit Mission Control - so a conversation vanished the instant
  * you went to look at the mission it had just started, which is the first thing
- * anybody does. sessionStorage keeps it for the life of the tab, which is the
- * right lifetime: it survives navigation and a refresh, and a new tab starts
- * clean rather than inheriting somebody else's session.
+ * anybody does.
+ *
+ * localStorage, not sessionStorage: the terminal is a log, and a log that
+ * empties itself when you close the browser is not one. Closing the tab at the
+ * end of the day and finding yesterday's work gone is the same bug as losing it
+ * on navigation, just slower to notice. New conversation is the way to clear
+ * it, and the trimming below keeps it from growing without bound.
  */
 const HISTORY_KEY = 'brightconnect.console.turns';
 const DRAFT_KEY = 'brightconnect.console.draft';
@@ -68,7 +72,7 @@ function append(lines: TerminalLine[], line: TerminalLine): TerminalLine[] {
 
 function loadLog(): TerminalLine[] {
   try {
-    const raw = sessionStorage.getItem(LOG_KEY);
+    const raw = localStorage.getItem(LOG_KEY);
     const parsed = raw ? JSON.parse(raw) : null;
     return Array.isArray(parsed) ? (parsed as TerminalLine[]) : [];
   } catch {
@@ -78,7 +82,7 @@ function loadLog(): TerminalLine[] {
 
 function loadHistory(): Turn[] {
   try {
-    const raw = sessionStorage.getItem(HISTORY_KEY);
+    const raw = localStorage.getItem(HISTORY_KEY);
     const parsed = raw ? JSON.parse(raw) : null;
     return Array.isArray(parsed) ? (parsed as Turn[]) : [];
   } catch {
@@ -90,7 +94,7 @@ export default function Console() {
   const [turns, setTurns] = useState<Turn[]>(loadHistory);
   const [input, setInput] = useState(() => {
     try {
-      return sessionStorage.getItem(DRAFT_KEY) ?? '';
+      return localStorage.getItem(DRAFT_KEY) ?? '';
     } catch {
       return '';
     }
@@ -135,7 +139,7 @@ export default function Console() {
   // Persist the conversation and the unsent draft as they change.
   useEffect(() => {
     try {
-      sessionStorage.setItem(HISTORY_KEY, JSON.stringify(turns));
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(turns));
     } catch {
       // A conversation too large to store is not a reason to lose the page.
     }
@@ -144,7 +148,7 @@ export default function Console() {
   // The terminal is the transcript now, so it has to survive a refresh too.
   useEffect(() => {
     try {
-      sessionStorage.setItem(LOG_KEY, JSON.stringify(log.slice(-KEEP_STORED)));
+      localStorage.setItem(LOG_KEY, JSON.stringify(log.slice(-KEEP_STORED)));
     } catch {
       /* storage full or disabled */
     }
@@ -152,8 +156,8 @@ export default function Console() {
 
   useEffect(() => {
     try {
-      if (input) sessionStorage.setItem(DRAFT_KEY, input);
-      else sessionStorage.removeItem(DRAFT_KEY);
+      if (input) localStorage.setItem(DRAFT_KEY, input);
+      else localStorage.removeItem(DRAFT_KEY);
     } catch {
       /* storage disabled */
     }
@@ -168,9 +172,9 @@ export default function Console() {
     setError(null);
     setLog([]);
     try {
-      sessionStorage.removeItem(HISTORY_KEY);
-      sessionStorage.removeItem(DRAFT_KEY);
-      sessionStorage.removeItem(LOG_KEY);
+      localStorage.removeItem(HISTORY_KEY);
+      localStorage.removeItem(DRAFT_KEY);
+      localStorage.removeItem(LOG_KEY);
     } catch {
       /* storage disabled */
     }
