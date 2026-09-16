@@ -1,4 +1,4 @@
-# Deploying Bright Connect
+# Deploying Brightworks
 
 Two steps: provision the box once, then deploy as often as you like.
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=Bright Connect chat API (the product the fleet maintains)
+Description=Brightworks chat API (the product the fleet maintains)
 After=network-online.target
 Wants=network-online.target
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=Bright Connect dashboard (console, orchestrator, agent fleet)
+Description=Brightworks dashboard (console, orchestrator, agent fleet)
 After=network-online.target
 Wants=network-online.target
 

@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Bright Connect dashboard, and the chat product its agent fleet maintains.",
+  "description": "Brightworks dashboard, and the chat product its agent fleet maintains.",
   "engines": {
     "node": ">=24"
   },

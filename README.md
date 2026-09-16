@@ -1,4 +1,4 @@
-# Bright Connect
+# Brightworks
 
 An AI engineering workforce: a fleet of specialist agents that take a specification
 or a production alert, plan the work, delegate it, and come back to a human only for
@@ -223,9 +223,10 @@ public URL, so EC2 or ngrok.
 a laptop. `POST /api/events/poll` forces a check, and the console has a
 **Check GitHub now** button.
 
-Issues need the `GITHUB_TRIGGER_LABEL` label (default `brightconnect`) before the
-fleet picks them up. Pointed at a real repository, acting on every new issue
-would start a mission for each one. Set it empty to act on everything.
+Every new issue starts a mission: `GITHUB_TRIGGER_LABEL` is empty by default, so
+nobody has to know a magic label for a ticket to be picked up. Set it to a label
+when pointing this at a repository busy enough that acting on every issue would
+be wrong.
 
 A mission already working an issue means a second event for the same issue is
 ignored rather than starting a competing run.
