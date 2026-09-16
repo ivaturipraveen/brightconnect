@@ -38,9 +38,18 @@ export default function MissionFlow({
 }: Props) {
   const done = ['succeeded', 'failed', 'cancelled'].includes(missionStatus);
 
-  const plan = events.find(
-    (e) => e.type === 'agent.message' && e.actor === 'orchestrator' && (e.text ?? '').trim(),
-  )?.text;
+  /**
+   * Everything the orchestrator said, not just its opening line.
+   *
+   * It narrates the whole mission - the plan, what it read, why it engaged who
+   * it engaged, how it judged what came back, what it did about a weak result.
+   * Taking only the first message showed the plan and threw the reasoning away,
+   * which is the part that explains the mission.
+   */
+  const narration = events
+    .filter((e) => e.type === 'agent.message' && e.actor === 'orchestrator' && (e.text ?? '').trim())
+    .map((e) => e.text!.trim());
+  const plan = narration.length ? narration.join('\n\n---\n\n') : undefined;
 
   const waves = useMemo(() => {
     const sorted = [...agents].sort(
@@ -62,7 +71,9 @@ export default function MissionFlow({
       id: 'plan',
       n: '2',
       label: 'Plan',
-      detail: plan ? 'the approach chosen' : 'deciding…',
+      detail: plan
+        ? narration.length > 1 ? `the approach, and ${narration.length - 1} updates` : 'the approach chosen'
+        : 'deciding…',
       state: plan ? 'done' : 'active',
     },
     {

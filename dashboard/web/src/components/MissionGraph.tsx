@@ -81,9 +81,18 @@ export default function MissionGraph({
   const [selected, setSelected] = useState<string | null>(null);
 
   const done = ['succeeded', 'failed', 'cancelled'].includes(missionStatus);
-  const plan = events.find(
-    (e) => e.type === 'agent.message' && e.actor === 'orchestrator' && (e.text ?? '').trim(),
-  )?.text;
+  /**
+   * Everything the orchestrator said, not just its opening line.
+   *
+   * It narrates the whole mission - the plan, what it read, why it engaged who
+   * it engaged, how it judged what came back, what it did about a weak result.
+   * Taking only the first message showed the plan and threw the reasoning away,
+   * which is the part that explains the mission.
+   */
+  const narration = events
+    .filter((e) => e.type === 'agent.message' && e.actor === 'orchestrator' && (e.text ?? '').trim())
+    .map((e) => e.text!.trim());
+  const plan = narration[0];
 
   const { nodes, edges, width, height } = useMemo(() => {
     const sorted = [...agents].sort(
@@ -113,7 +122,9 @@ export default function MissionGraph({
 
     ns.push({
       key: 'orchestrator', kind: 'orchestrator', title: 'Orchestrator',
-      subtitle: plan ? 'planned the work' : 'deciding…',
+      subtitle: plan
+        ? narration.length > 1 ? `planned, then ${narration.length - 1} more` : 'planned the work'
+        : 'deciding…',
       state: plan ? 'done' : 'running', x: centre, y,
       body: plan ?? undefined, bodyLabel: 'Plan',
     });
@@ -305,8 +316,8 @@ export default function MissionGraph({
         ) : chosen.kind === 'intake' ? (
           <Detail label="The request">{missionInput}</Detail>
         ) : chosen.kind === 'orchestrator' ? (
-          <Detail label="Orchestrator · plan">
-            {plan ?? 'Still reading the request.'}
+          <Detail label={`Orchestrator · ${narration.length || 'no'} update${narration.length === 1 ? '' : 's'}`}>
+            {narration.length ? narration.join('\n\n---\n\n') : 'Still reading the request.'}
           </Detail>
         ) : chosen.kind === 'outcome' ? (
           <Detail label="Outcome">{missionSummary ?? missionStatus}</Detail>
